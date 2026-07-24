@@ -6,23 +6,28 @@
 const SUITS = ['S', 'H', 'C', 'D'];  // 黑桃 红桃 梅花 方块
 const SUIT_NAMES = { S: 'spades', H: 'hearts', C: 'clubs', D: 'diamonds' };
 
-// 点数（从小到大，2最小，大王最大）
-const RANK_ORDER = ['2','3','4','5','6','7','8','9','10','J','Q','K','A','XS','XB'];
+// 点数（从小到大，2最小，大王最大；LEVEL是级牌的临时位置，介于A和王之间）
+const RANK_ORDER = ['2','3','4','5','6','7','8','9','10','J','Q','K','A','LEVEL','XS','XB'];
 const RANK_VALUE = {};
 RANK_ORDER.forEach((r, i) => { RANK_VALUE[r] = i; });
+// RANK_VALUE: 2=0, A=12, LEVEL=13, XS=14, XB=15
+
+// 获取牌的实际等价值（级牌提升到LEVEL位置）
+function getEffectiveRankValue(rank, level) {
+  if (rank === level) return RANK_VALUE['LEVEL']; // 级牌仅次于大小王
+  return RANK_VALUE[rank] !== undefined ? RANK_VALUE[rank] : 0;
+}
 
 // 判断是否为级牌
 function isLevelCard(rank, level) {
   return rank === level;
 }
 
-// 获取牌的实际点数（考虑级牌）
+// 获取牌的实际点数（级牌提升到LEVEL位置，介于A和王之间）
 function getEffectiveRank(card, level) {
   if (card.rank === 'XS') return 'XS';  // 小王
   if (card.rank === 'XB') return 'XB';  // 大王
-  if (card.rank === level) return level;
-  // A > K > ... > level+1 > level > level-1 > ... > 2
-  // 级牌仅次于大小王
+  if (card.rank === level) return 'LEVEL';  // 级牌→LEVEL，介于A(12)和XS(14)之间
   return card.rank;
 }
 
@@ -148,7 +153,7 @@ function identifyCardType(cards, level) {
     const bigKings = cards.filter(c => c.rank === 'XB').length;
     const smallKings = cards.filter(c => c.rank === 'XS').length;
     if (bigKings === 2 && smallKings === 2) {
-      return { type: 'four_kings', weight: 200, mainRank: 'XB', mainRankValue: RANK_VALUE['XB'] };
+      return { type: 'four_kings', weight: 200, mainRank: 'XB', mainRankValue: getEffectiveRankValue('XB', level) };
     }
   }
 
@@ -163,17 +168,17 @@ function identifyCardType(cards, level) {
     // 6张炸弹
     if (n === 6 && counts.length === 1 && counts[0] === 6) {
       const rk = Object.keys(rankCounts)[0];
-      return { type: 'bomb_6', weight: 115, mainRank: rk, mainRankValue: RANK_VALUE[rk] };
+      return { type: 'bomb_6', weight: 115, mainRank: rk, mainRankValue: getEffectiveRankValue(rk, level) };
     }
     // 5张炸弹
     if (n === 5 && counts.length === 1 && counts[0] === 5) {
       const rk = Object.keys(rankCounts)[0];
-      return { type: 'bomb_5', weight: 105, mainRank: rk, mainRankValue: RANK_VALUE[rk] };
+      return { type: 'bomb_5', weight: 105, mainRank: rk, mainRankValue: getEffectiveRankValue(rk, level) };
     }
     // 4张炸弹
     if (n === 4 && counts.length === 1 && counts[0] === 4) {
       const rk = Object.keys(rankCounts)[0];
-      return { type: 'bomb_4', weight: 100, mainRank: rk, mainRankValue: RANK_VALUE[rk] };
+      return { type: 'bomb_4', weight: 100, mainRank: rk, mainRankValue: getEffectiveRankValue(rk, level) };
     }
   }
 
@@ -211,16 +216,16 @@ function identifyCardType(cards, level) {
   if (n === 3) {
     if (counts.length === 1 && counts[0] === 3) {
       const rk = Object.keys(rankCounts)[0];
-      return { type: 'triple', weight: 2, mainRank: rk, mainRankValue: RANK_VALUE[rk] };
+      return { type: 'triple', weight: 2, mainRank: rk, mainRankValue: getEffectiveRankValue(rk, level) };
     }
     // 带万能牌
     if (wildCount === 1 && counts.length === 1 && counts[0] === 2) {
       const rk = Object.keys(rankCounts)[0];
-      return { type: 'triple', weight: 2, mainRank: rk, mainRankValue: RANK_VALUE[rk] };
+      return { type: 'triple', weight: 2, mainRank: rk, mainRankValue: getEffectiveRankValue(rk, level) };
     }
     if (wildCount === 2 && counts.length === 1 && counts[0] === 1) {
       const rk = Object.keys(rankCounts)[0];
-      return { type: 'triple', weight: 2, mainRank: rk, mainRankValue: RANK_VALUE[rk] };
+      return { type: 'triple', weight: 2, mainRank: rk, mainRankValue: getEffectiveRankValue(rk, level) };
     }
   }
 
@@ -228,22 +233,22 @@ function identifyCardType(cards, level) {
   if (n === 2) {
     if (counts.length === 1 && counts[0] === 2) {
       const rk = Object.keys(rankCounts)[0];
-      return { type: 'pair', weight: 1, mainRank: rk, mainRankValue: RANK_VALUE[rk] };
+      return { type: 'pair', weight: 1, mainRank: rk, mainRankValue: getEffectiveRankValue(rk, level) };
     }
     // 带万能牌
     if (wildCount === 1 && counts.length === 1 && counts[0] === 1) {
       const rk = Object.keys(rankCounts)[0];
-      return { type: 'pair', weight: 1, mainRank: rk, mainRankValue: RANK_VALUE[rk] };
+      return { type: 'pair', weight: 1, mainRank: rk, mainRankValue: getEffectiveRankValue(rk, level) };
     }
     if (wildCount === 2) {
-      return { type: 'pair', weight: 1, mainRank: 'A', mainRankValue: RANK_VALUE['A'] };
+      return { type: 'pair', weight: 1, mainRank: 'A', mainRankValue: getEffectiveRankValue('A', level) };
     }
   }
 
   // 单张 (1张)
   if (n === 1) {
     const rk = cards[0].rank;
-    return { type: 'single', weight: 0, mainRank: rk, mainRankValue: RANK_VALUE[rk] };
+    return { type: 'single', weight: 0, mainRank: rk, mainRankValue: getEffectiveRankValue(rk, level) };
   }
 
   return null;
@@ -283,14 +288,14 @@ function checkStraight(cards, level) {
   const a2345Set = new Set(cards.map(c => c.rank));
   if (a2345Set.has('A') && a2345Set.has('2') && a2345Set.has('3') &&
       a2345Set.has('4') && a2345Set.has('5')) {
-    return { type: 'straight', weight: 3, mainRank: '5', mainRankValue: RANK_VALUE['5'] };
+    return { type: 'straight', weight: 3, mainRank: '5', mainRankValue: getEffectiveRankValue('5', level) };
   }
 
   // 特殊：23456 (2=0, 3=1, 4=2, 5=3, 6=4)
   const b23456Set = new Set(cards.map(c => c.rank));
   if (b23456Set.has('2') && b23456Set.has('3') && b23456Set.has('4') &&
       b23456Set.has('5') && b23456Set.has('6')) {
-    return { type: 'straight', weight: 3, mainRank: '6', mainRankValue: RANK_VALUE['6'] };
+    return { type: 'straight', weight: 3, mainRank: '6', mainRankValue: getEffectiveRankValue('6', level) };
   }
 
   return null;
@@ -338,7 +343,7 @@ function checkPlane(cards, level) {
     const r2 = RANK_VALUE[triples[1][0]];
     if (Math.abs(r1 - r2) === 1) {
       const maxRank = RANK_ORDER[Math.max(r1, r2)];
-      return { type: 'plane', weight: 6, mainRank: maxRank, mainRankValue: RANK_VALUE[maxRank] };
+      return { type: 'plane', weight: 6, mainRank: maxRank, mainRankValue: getEffectiveRankValue(maxRank, level) };
     }
   }
   // TODO: 带万能牌的钢板（简化处理，暂不实现复杂组合）
@@ -374,7 +379,7 @@ function checkTriplePair5(cards, level) {
     const values = Object.values(counts).sort((a, b) => b - a);
     if (values.length === 2 && values[0] === 3 && values[1] === 2) {
       const tripleRank = Object.entries(counts).find(([, c]) => c === 3)[0];
-      return { type: 'triple_pair', weight: 4, mainRank: tripleRank, mainRankValue: RANK_VALUE[tripleRank], subtype: 'triple_pair_5' };
+      return { type: 'triple_pair', weight: 4, mainRank: tripleRank, mainRankValue: getEffectiveRankValue(tripleRank, level), subtype: 'triple_pair_5' };
     }
     return null;
   }
@@ -410,7 +415,7 @@ function checkTriplePair5(cards, level) {
       return {
         type: 'triple_pair', weight: 4,
         mainRank: tripleRank,
-        mainRankValue: RANK_VALUE[tripleRank],
+        mainRankValue: getEffectiveRankValue(tripleRank, level),
         subtype: 'triple_pair_5'
       };
     }
@@ -423,7 +428,7 @@ function checkTriplePair5(cards, level) {
         return {
           type: 'triple_pair', weight: 4,
           mainRank: tripleRank,
-          mainRankValue: RANK_VALUE[tripleRank],
+          mainRankValue: getEffectiveRankValue(tripleRank, level),
           subtype: 'triple_pair_5'
         };
       }
@@ -442,7 +447,7 @@ function checkTriplePair5(cards, level) {
         return {
           type: 'triple_pair', weight: 4,
           mainRank: normalEntries.length === 1 ? normalEntries[0][0] : 'A',
-          mainRankValue: RANK_VALUE[normalEntries.length === 1 ? normalEntries[0][0] : 'A'],
+          mainRankValue: getEffectiveRankValue(normalEntries.length === 1 ? normalEntries[0][0] : 'A', level),
           subtype: 'triple_pair_5'
         };
       }
@@ -501,30 +506,30 @@ function findAllPlays(hand, level) {
 
   // 1. 单张
   for (const c of hand) {
-    addPlay([c], { type: 'single', weight: 0, mainRank: c.rank, mainRankValue: RANK_VALUE[c.rank] });
+    addPlay([c], { type: 'single', weight: 0, mainRank: c.rank, mainRankValue: getEffectiveRankValue(c.rank, level) });
   }
 
   // 2. 对子
   for (const rank of ranks) {
     const g = groups[rank];
-    if (g.length >= 2) addPlay([g[0], g[1]], { type: 'pair', weight: 1, mainRank: rank, mainRankValue: RANK_VALUE[rank] });
-    if (g.length >= 1 && wildCount >= 1) addPlay([g[0], wildCards[0]], { type: 'pair', weight: 1, mainRank: rank, mainRankValue: RANK_VALUE[rank] });
+    if (g.length >= 2) addPlay([g[0], g[1]], { type: 'pair', weight: 1, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level) });
+    if (g.length >= 1 && wildCount >= 1) addPlay([g[0], wildCards[0]], { type: 'pair', weight: 1, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level) });
   }
-  if (wildCount >= 2) addPlay([wildCards[0], wildCards[1]], { type: 'pair', weight: 1, mainRank: 'A', mainRankValue: RANK_VALUE['A'] });
+  if (wildCount >= 2) addPlay([wildCards[0], wildCards[1]], { type: 'pair', weight: 1, mainRank: 'A', mainRankValue: getEffectiveRankValue('A', level) });
 
   // 3. 三同张
   for (const rank of ranks) {
     const g = groups[rank];
-    if (g.length >= 3) addPlay([g[0], g[1], g[2]], { type: 'triple', weight: 2, mainRank: rank, mainRankValue: RANK_VALUE[rank] });
-    if (g.length >= 2 && wildCount >= 1) addPlay([g[0], g[1], wildCards[0]], { type: 'triple', weight: 2, mainRank: rank, mainRankValue: RANK_VALUE[rank] });
+    if (g.length >= 3) addPlay([g[0], g[1], g[2]], { type: 'triple', weight: 2, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level) });
+    if (g.length >= 2 && wildCount >= 1) addPlay([g[0], g[1], wildCards[0]], { type: 'triple', weight: 2, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level) });
   }
 
   // 4. 炸弹（4-6张）
   for (const rank of ranks) {
     const g = groups[rank];
-    if (g.length >= 4) addPlay(g.slice(0, 4), { type: 'bomb_4', weight: 100, mainRank: rank, mainRankValue: RANK_VALUE[rank] });
-    if (g.length >= 5) addPlay(g.slice(0, 5), { type: 'bomb_5', weight: 105, mainRank: rank, mainRankValue: RANK_VALUE[rank] });
-    if (g.length >= 6) addPlay(g.slice(0, 6), { type: 'bomb_6', weight: 115, mainRank: rank, mainRankValue: RANK_VALUE[rank] });
+    if (g.length >= 4) addPlay(g.slice(0, 4), { type: 'bomb_4', weight: 100, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level) });
+    if (g.length >= 5) addPlay(g.slice(0, 5), { type: 'bomb_5', weight: 105, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level) });
+    if (g.length >= 6) addPlay(g.slice(0, 6), { type: 'bomb_6', weight: 115, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level) });
   }
 
   // 5. 三带二（5张）
@@ -535,7 +540,7 @@ function findAllPlays(hand, level) {
         if (r2 === rank) continue;
         const g2 = groups[r2];
         if (g2.length >= 2) {
-          addPlay([g[0], g[1], g[2], g2[0], g2[1]], { type: 'triple_pair', weight: 4, mainRank: rank, mainRankValue: RANK_VALUE[rank], subtype: 'triple_pair_5' });
+          addPlay([g[0], g[1], g[2], g2[0], g2[1]], { type: 'triple_pair', weight: 4, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level), subtype: 'triple_pair_5' });
         }
       }
     }
@@ -565,7 +570,7 @@ function findAllPlays(hand, level) {
       return true;
     });
     if (straightRanksFiltered.length === 5) {
-      addPlay(a2345.map(r => groups[r][0]), { type: 'straight', weight: 3, mainRank: '5', mainRankValue: RANK_VALUE['5'] });
+      addPlay(a2345.map(r => groups[r][0]), { type: 'straight', weight: 3, mainRank: '5', mainRankValue: getEffectiveRankValue('5', level) });
     }
   }
   // 23456特殊处理
@@ -573,7 +578,7 @@ function findAllPlays(hand, level) {
   if (b23456.every(r => groups[r] && groups[r].length >= 1)) {
     const filtered23456 = b23456.filter(r => r !== level);
     if (filtered23456.length === 5) {
-      addPlay(b23456.map(r => groups[r][0]), { type: 'straight', weight: 3, mainRank: '6', mainRankValue: RANK_VALUE['6'] });
+      addPlay(b23456.map(r => groups[r][0]), { type: 'straight', weight: 3, mainRank: '6', mainRankValue: getEffectiveRankValue('6', level) });
     }
   }
 
@@ -581,7 +586,7 @@ function findAllPlays(hand, level) {
   const bigKings = hand.filter(c => c.rank === 'XB');
   const smallKings = hand.filter(c => c.rank === 'XS');
   if (bigKings.length >= 2 && smallKings.length >= 2) {
-    addPlay([bigKings[0], bigKings[1], smallKings[0], smallKings[1]], { type: 'four_kings', weight: 200, mainRank: 'XB', mainRankValue: RANK_VALUE['XB'] });
+    addPlay([bigKings[0], bigKings[1], smallKings[0], smallKings[1]], { type: 'four_kings', weight: 200, mainRank: 'XB', mainRankValue: getEffectiveRankValue('XB', level) });
   }
 
   // 8. 三连对（6张）
@@ -597,7 +602,7 @@ function findAllPlays(hand, level) {
   for (let i = 0; i <= ranks.length - 2; i++) {
     const r1 = ranks[i], r2 = ranks[i + 1];
     if (RANK_VALUE[r2] - RANK_VALUE[r1] === 1 && groups[r1].length >= 3 && groups[r2].length >= 3) {
-      addPlay([...groups[r1].slice(0, 3), ...groups[r2].slice(0, 3)], { type: 'plane', weight: 6, mainRank: r2, mainRankValue: RANK_VALUE[r2] });
+      addPlay([...groups[r1].slice(0, 3), ...groups[r2].slice(0, 3)], { type: 'plane', weight: 6, mainRank: r2, mainRankValue: getEffectiveRankValue(r2, level) });
     }
   }
 
@@ -619,14 +624,14 @@ function findSmallestPlay(hand, level) {
   if (sorted.length === 0) return null;
   // 最小单张
   const smallest = sorted[sorted.length - 1];
-  return { cards: [smallest], type: { type: 'single', weight: 0, mainRank: smallest.rank, mainRankValue: RANK_VALUE[smallest.rank] } };
+  return { cards: [smallest], type: { type: 'single', weight: 0, mainRank: smallest.rank, mainRankValue: getEffectiveRankValue(smallest.rank, level) } };
 }
 
 // 导出（浏览器端用全局变量）
 if (typeof window !== 'undefined') {
   window.CardEngine = {
     SUITS, SUIT_NAMES, RANK_ORDER, RANK_VALUE, RANK_TO_IMG,
-    isLevelCard, getEffectiveRank, compareCards,
+    isLevelCard, getEffectiveRank, getEffectiveRankValue, compareCards,
     createDeck, shuffle, sortHand,
     getCardImage, getCardBackImage, isWildCard,
     identifyCardType, compareCardTypes,
@@ -638,7 +643,7 @@ if (typeof window !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     SUITS, SUIT_NAMES, RANK_ORDER, RANK_VALUE,
-    isLevelCard, getEffectiveRank, compareCards,
+    isLevelCard, getEffectiveRank, getEffectiveRankValue, compareCards,
     createDeck, shuffle, sortHand,
     getCardImage, getCardBackImage, isWildCard,
     identifyCardType, compareCardTypes,

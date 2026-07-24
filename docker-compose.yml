@@ -1,0 +1,11 @@
+# 掼蛋游戏 - Docker Compose
+version: '3.8'
+services:
+  guandan:
+    build: .
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+      - HOST=0.0.0.0

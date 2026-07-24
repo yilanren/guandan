@@ -1,0 +1,989 @@
+/**
+ * 掼蛋游戏 - 前端主控制器
+ * 管理界面切换、用户交互、动画效果
+ */
+
+(function() {
+  'use strict';
+
+  // === DOM引用 ===
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => document.querySelectorAll(sel);
+
+  // === 游戏状态 ===
+  let game = null;
+  let currentScreen = 'menu';
+  let selectedCards = [];
+  let timerInterval = null;
+  let timerSeconds = 60;
+  let currentMode = null;
+  let teammateType = null;
+  let isMultiplayer = false;
+  let socket = null;
+  let roomCode = null;
+  let playerSeat = 0;
+  let dealingInProgress = false;
+
+  // === 初始化 ===
+  function init() {
+    bindMenuEvents();
+    checkSaveGame();
+  }
+
+  // === 屏幕切换 ===
+  function switchScreen(name) {
+    $$('.screen').forEach(s => s.classList.remove('active'));
+    const screen = $(`#${name}-screen`);
+    if (screen) screen.classList.add('active');
+    currentScreen = name;
+  }
+
+  // === 检查存档 ===
+  function checkSaveGame() {
+    if (GameStorage.hasSave()) {
+      switchScreen('save');
+      $('#btn-continue').onclick = () => {
+        const saveData = GameStorage.loadGame();
+        if (saveData) {
+          restoreGame(saveData);
+        } else {
+          switchScreen('menu');
+        }
+      };
+      $('#btn-restart').onclick = () => {
+        GameStorage.clearSave();
+        switchScreen('menu');
+      };
+    }
+  }
+
+  // === 恢复游戏 ===
+  function restoreGame(saveData) {
+    // 恢复游戏状态
+    const gs = saveData.gameState;
+    game = {
+      mode: gs.mode,
+      totalPlayers: gs.totalPlayers,
+      players: gs.players,
+      currentPlayerIndex: gs.currentPlayerIndex,
+      lastPlay: gs.lastPlay,
+      lastPlayPlayerIndex: gs.lastPlayPlayerIndex,
+      passCount: gs.passCount,
+      roundNumber: gs.roundNumber,
+      level: gs.level,
+      phase: gs.phase,
+      history: gs.history || [],
+      finishedPlayers: gs.finishedPlayers || [],
+      timerSeconds: 60,
+      timerInterval: null,
+      tributePhase: false,
+      tributes: [],
+    };
+    currentMode = gs.mode;
+    startGameScreen();
+    renderGame();
+    startTimer();
+  }
+
+  // === 菜单事件绑定 ===
+  function bindMenuEvents() {
+    // 主菜单模式按钮
+    $$('#menu-screen .menu-btn[data-mode]').forEach(btn => {
+      btn.addEventListener('click', function() {
+        currentMode = this.dataset.mode;
+        if (currentMode === 'single') {
+          // 单人模式，直接选AI队友并进入
+          teammateType = 'ai';
+          startSinglePlayerGame();
+        } else {
+          // 多人模式，显示队友选择
+          showModeSelect();
+        }
+      });
+    });
+
+    // 新手教程
+    $('#btn-tutorial').addEventListener('click', () => {
+      switchScreen('tutorial');
+    });
+    $('#btn-tutorial-close').addEventListener('click', () => {
+      switchScreen('menu');
+    });
+
+    // 模式选择
+    $('#btn-ai-teammate').addEventListener('click', () => {
+      teammateType = 'ai';
+      startGameWithAI();
+    });
+    $('#btn-real-teammate').addEventListener('click', () => {
+      teammateType = 'real';
+      startMultiplayerGame();
+    });
+    $('#btn-mode-back').addEventListener('click', () => {
+      switchScreen('menu');
+    });
+
+    // 色子
+    $('#btn-roll-dice').addEventListener('click', rollDice);
+
+    // 游戏操作
+    $('#btn-play').addEventListener('click', playSelectedCardsAction);
+    $('#btn-pass').addEventListener('click', passTurnAction);
+    $('#btn-hint').addEventListener('click', showHint);
+
+    // 结果
+    $('#btn-next-game').addEventListener('click', startNextGame);
+    $('#btn-back-menu').addEventListener('click', () => {
+      stopTimer();
+      switchScreen('menu');
+    });
+
+    // 房间
+    $('#btn-copy-code').addEventListener('click', copyRoomCode);
+    $('#btn-add-ai').addEventListener('click', addAIToRoom);
+    $('#btn-start-game').addEventListener('click', startRoomGame);
+    $('#btn-leave-room').addEventListener('click', leaveRoom);
+  }
+
+  // === 模式选择 ===
+  function showModeSelect() {
+    switchScreen('mode-select');
+    const titles = {
+      two: '两人对局',
+      three: '三人对局',
+      four: '四人对局（经典掼蛋）',
+    };
+    $('#mode-select-title').textContent = titles[currentMode] || currentMode;
+  }
+
+  // === 单人模式 ===
+  function startSinglePlayerGame() {
+    isMultiplayer = false;
+    game = GameEngine.createGame({
+      mode: 'single',
+      playerNames: ['你', 'AI对手'],
+      aiSlots: [1], // 玩家0是人类，玩家1是AI
+    });
+    switchScreen('dice');
+  }
+
+  // === 摇色子 ===
+  function rollDice() {
+    const diceEl = $('#dice-element');
+    const resultEl = $('#dice-result');
+    const btn = $('#btn-roll-dice');
+
+    btn.disabled = true;
+    resultEl.style.display = 'none';
+    diceEl.textContent = '🎲';
+    diceEl.classList.add('rolling');
+
+    setTimeout(() => {
+      diceEl.classList.remove('rolling');
+      // 随机决定结果
+      const isBlue = Math.random() < 0.5;
+
+      if (isBlue) {
+        diceEl.textContent = '🔵';
+        resultEl.textContent = '🔵 蓝色！你先手';
+        resultEl.className = 'dice-result blue';
+        playerSeat = 0;
+        game.currentPlayerIndex = 0;
+        game.lastPlayPlayerIndex = 0;
+      } else {
+        diceEl.textContent = '🔴';
+        resultEl.textContent = '🔴 红色！对方先手';
+        resultEl.className = 'dice-result red';
+        playerSeat = 0;
+        game.currentPlayerIndex = 1;
+        game.lastPlayPlayerIndex = 1;
+      }
+      resultEl.style.display = 'block';
+
+      // 2秒后进入游戏
+      setTimeout(() => {
+        startGameScreen();
+        dealAnimation();
+      }, 2000);
+    }, 800);
+  }
+
+  // === AI队友模式 - 直接开始 ===
+  function startGameWithAI() {
+    isMultiplayer = false;
+    const totalPlayers = { two: 2, three: 3, four: 4 }[currentMode] || 4;
+    const names = ['你'];
+    const aiSlots = [];
+    for (let i = 1; i < totalPlayers; i++) {
+      names.push(currentMode === 'four' && i === 2 ? 'AI队友' : `AI玩家${i+1}`);
+      aiSlots.push(i);
+    }
+
+    game = GameEngine.createGame({
+      mode: currentMode,
+      playerNames: names,
+      aiSlots,
+    });
+
+    // 随机先手
+    game.currentPlayerIndex = Math.floor(Math.random() * totalPlayers);
+    game.lastPlayPlayerIndex = game.currentPlayerIndex;
+    playerSeat = 0;
+
+    startGameScreen();
+    dealAnimation();
+  }
+
+  // === 真人对战模式 - 创建房间 ===
+  function startMultiplayerGame() {
+    isMultiplayer = true;
+    connectSocket();
+  }
+
+  // === Socket.io 连接 ===
+  function connectSocket() {
+    socket = io();
+
+    socket.on('connect', () => {
+      const totalSlots = { two: 2, three: 3, four: 4 }[currentMode] || 4;
+      socket.emit('create_room', {
+        playerName: '你',
+        mode: currentMode,
+        totalSlots,
+      }, (res) => {
+        if (res.success) {
+          roomCode = res.roomCode;
+          switchScreen('room');
+          renderRoomPlayers(res.players);
+          $('#room-code').textContent = roomCode;
+          updateRoomWaitingText(res.players, totalSlots);
+        }
+      });
+    });
+
+    socket.on('room_update', (data) => {
+      renderRoomPlayers(data.players);
+      const totalSlots = { two: 2, three: 3, four: 4 }[currentMode] || 4;
+      updateRoomWaitingText(data.players, totalSlots);
+    });
+
+    socket.on('game_starting', (data) => {
+      // 开始多人游戏
+      startMultiplayerGameScreen();
+    });
+
+    socket.on('cards_played', (data) => {
+      handleRemotePlay(data);
+    });
+
+    socket.on('player_passed', (data) => {
+      handleRemotePass(data);
+    });
+
+    socket.on('emoji_received', (data) => {
+      showEmoji(data);
+    });
+
+    socket.on('disconnect', () => {
+      if (currentScreen === 'game' || currentScreen === 'room') {
+        showToast('连接断开，请检查网络');
+      }
+    });
+  }
+
+  function renderRoomPlayers(players) {
+    const container = $('#room-players-list');
+    const totalSlots = { two: 2, three: 3, four: 4 }[currentMode] || 4;
+    let html = '';
+    for (let i = 0; i < totalSlots; i++) {
+      const player = players[i];
+      if (player) {
+        html += `<div class="room-player-slot filled">
+          <span>👤 ${player.name}</span>
+          <span style="color:#4caf50;">✓ 已就位</span>
+        </div>`;
+      } else {
+        html += `<div class="room-player-slot empty">
+          <span>空位</span>
+          <span>等待加入...</span>
+        </div>`;
+      }
+    }
+    container.innerHTML = html;
+  }
+
+  function updateRoomWaitingText(players, totalSlots) {
+    const waiting = $('#room-waiting-text');
+    const remaining = totalSlots - players.length;
+    if (remaining <= 0) {
+      waiting.textContent = '✅ 人数已满，可以开始游戏！';
+      waiting.style.color = '#4caf50';
+    } else {
+      waiting.textContent = `等待玩家加入... 还差 ${remaining} 人`;
+    }
+  }
+
+  function copyRoomCode() {
+    if (roomCode) {
+      navigator.clipboard.writeText(roomCode).then(() => {
+        showToast('✅ 房间号已复制！发送给好友加入');
+      }).catch(() => {
+        showToast(`房间号: ${roomCode} (请手动复制)`);
+      });
+    }
+  }
+
+  function addAIToRoom() {
+    socket.emit('add_ai_player', { roomCode }, (res) => {
+      if (res.success) {
+        renderRoomPlayers(res.players);
+      }
+    });
+  }
+
+  function startRoomGame() {
+    socket.emit('start_game', { roomCode }, (res) => {
+      if (!res.success) {
+        showToast(res.error || '无法开始游戏');
+      }
+    });
+  }
+
+  function leaveRoom() {
+    if (socket) {
+      socket.disconnect();
+      socket = null;
+    }
+    roomCode = null;
+    switchScreen('menu');
+  }
+
+  function startMultiplayerGameScreen() {
+    // 多人模式初始化
+    const totalSlots = { two: 2, three: 3, four: 4 }[currentMode] || 4;
+    const names = [];
+    const aiSlots = [];
+    // 简化：本地玩家是seat 0
+    // TODO: 从服务器同步真实配置
+    game = GameEngine.createGame({
+      mode: currentMode,
+      playerNames: names,
+      aiSlots: [],
+    });
+    playerSeat = 0;
+    startGameScreen();
+    dealAnimation();
+  }
+
+  function handleRemotePlay(data) {
+    // 远程玩家出牌
+    // TODO: 更新游戏状态
+    renderGame();
+  }
+
+  function handleRemotePass(data) {
+    // 远程玩家过牌
+    GameEngine.passTurn(game, data.playerSeat);
+    GameEngine.nextTurn(game);
+    renderGame();
+  }
+
+  // === 开始游戏界面 ===
+  function startGameScreen() {
+    switchScreen('game');
+    // 显示级牌
+    showLevelCardDisplay(game.level);
+    renderGame();
+    startTimer();
+    saveCurrentGame();
+
+    // 新手教程提示
+    if (GameStorage.shouldShowTutorial()) {
+      setTimeout(() => {
+        showToast('💡 提示：每回合60秒，超时自动出最小牌。选牌后点击"出牌"按钮。');
+        GameStorage.incrementTutorial();
+      }, 1500);
+    }
+
+    // 如果是AI回合，触发AI
+    if (isCurrentPlayerAI()) {
+      setTimeout(() => aiTakeTurn(), 1500);
+    }
+  }
+
+  // === 级牌展示动画 ===
+  function showLevelCardDisplay(level) {
+    const div = document.createElement('div');
+    div.className = 'level-card-display';
+    const rankMap = { 'J': 'jack', 'Q': 'queen', 'K': 'king', 'A': 'ace' };
+    const mappedRank = rankMap[level] || level;
+    const imgSrc = `cards/deck1/${mappedRank}_of_hearts.png`;
+    div.innerHTML = `<div style="text-align:center;color:var(--gold);margin-bottom:8px;font-weight:900;">⭐ 本局级牌: ${level}</div>
+      <img src="${imgSrc}" alt="级牌" onerror="this.src='cards/back.png'">`;
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 1800);
+  }
+
+  // === 发牌动画 ===
+  function dealAnimation() {
+    dealingInProgress = true;
+    const totalCards = 27;
+    let cardIndex = 0;
+    const delay = 80; // ms per card
+
+    function dealOneCard() {
+      if (cardIndex >= totalCards * game.totalPlayers) {
+        dealingInProgress = false;
+        renderGame();
+        if (isCurrentPlayerAI()) {
+          setTimeout(() => aiTakeTurn(), 1000);
+        }
+        return;
+      }
+
+      const playerIdx = cardIndex % game.totalPlayers;
+      cardIndex++;
+
+      // 简单的发牌动画：在屏幕中央闪现卡片
+      if (playerIdx === 0) {
+        // 发给自己 - 在手牌区动画
+      }
+
+      setTimeout(dealOneCard, delay);
+    }
+
+    dealOneCard();
+  }
+
+  // === 渲染游戏 ===
+  function renderGame() {
+    if (!game) return;
+
+    // 更新级牌显示
+    $('#game-level').textContent = game.level;
+    $('#game-round-info').textContent = `第${game.roundNumber}轮`;
+
+    renderOpponents();
+    renderPlayArea();
+    renderMyHand();
+    updateActionButtons();
+    saveCurrentGame();
+
+    // 检查游戏是否结束
+    if (game.phase === 'finished') {
+      setTimeout(() => showResults(), 1500);
+      return;
+    }
+
+    // 检查是否该当前玩家出牌
+    if (game.currentPlayerIndex !== 0 && isCurrentPlayerAI() && !dealingInProgress) {
+      setTimeout(() => aiTakeTurn(), 800);
+    }
+  }
+
+  // === 渲染对手 ===
+  function renderOpponents() {
+    const container = $('#opponents-area');
+    if (!container) return;
+
+    let html = '';
+    for (let i = 0; i < game.totalPlayers; i++) {
+      if (i === 0) continue; // 跳过自己
+      const player = game.players[i];
+      if (player.finished) {
+        html += `<div class="opponent-slot" style="opacity:0.4;">
+          <div class="opponent-name">${player.name} ✅ #${player.finishOrder}</div>
+          <div class="opponent-count">已完成</div>
+        </div>`;
+        continue;
+      }
+      const count = player.hand.length;
+      const backCards = [];
+      for (let j = 0; j < Math.min(count, 10); j++) {
+        backCards.push(`<img src="cards/back.png" class="card-back" alt="背面">`);
+      }
+      const activeClass = (game.currentPlayerIndex === i) ? ' active-turn' : '';
+      html += `<div class="opponent-slot${activeClass}">
+        <div class="opponent-name">${player.name} ${game.currentPlayerIndex === i ? '⏳' : ''}</div>
+        <div class="opponent-cards">${backCards.join('')}</div>
+        <div class="opponent-count">剩余 ${count} 张</div>
+      </div>`;
+    }
+    container.innerHTML = html;
+  }
+
+  // === 渲染出牌区 ===
+  function renderPlayArea() {
+    const container = $('#play-area-cards');
+    const info = $('#play-area-info');
+    if (!container || !info) return;
+
+    if (game.lastPlay && game.lastPlay.cards) {
+      const lastP = game.players[game.lastPlayPlayerIndex];
+      let html = '';
+      for (const c of game.lastPlay.cards) {
+        const deckNum = (c.id.includes('joker') || c.id.includes('_of_')) ? 1 : 1;
+        html += `<img src="cards/deck1/${c.id}.png" alt="${c.id}" onerror="this.src='cards/back.png'">`;
+      }
+      container.innerHTML = html;
+      const typeNames = {
+        single: '单张', pair: '对子', triple: '三同张',
+        triple_pair: '三带二', straight: '顺子',
+        triple_straight: '三连对', plane: '钢板',
+        flush_straight: '同花顺', bomb_4: '炸弹(4张)',
+        bomb_5: '炸弹(5张)', bomb_6: '炸弹(6张)',
+        four_kings: '👑 四大天王',
+      };
+      const typeName = typeNames[game.lastPlay.type.type] || game.lastPlay.type.type;
+      info.textContent = `${lastP.name} 出了: ${typeName}`;
+    } else {
+      container.innerHTML = '';
+      const curP = game.players[game.currentPlayerIndex];
+      info.textContent = curP ? `${curP.name} 请出牌` : '';
+    }
+  }
+
+  // === 渲染我的手牌 ===
+  function renderMyHand() {
+    const container = $('#my-hand-cards');
+    if (!container) return;
+
+    const myHand = game.players[0].hand;
+    const sorted = myHand;
+
+    container.innerHTML = '';
+    for (const card of sorted) {
+      const img = document.createElement('img');
+      img.src = `cards/deck1/${card.id}.png`;
+      img.className = 'card';
+      img.dataset.cardUid = card.uid;
+      img.onerror = function() { this.src = 'cards/back.png'; };
+      img.addEventListener('click', function() {
+        toggleCardSelection(this, card);
+      });
+
+      // 高亮已选中的牌
+      if (selectedCards.find(c => c.uid === card.uid)) {
+        img.classList.add('selected');
+      }
+
+      container.appendChild(img);
+    }
+
+    // 显示剩余张数
+    const info = $('#play-area-info');
+    if (info && game.players[0].hand.length <= 10) {
+      info.textContent += ` | 你剩 ${game.players[0].hand.length} 张`;
+    }
+  }
+
+  // === 选牌 ===
+  function toggleCardSelection(imgEl, card) {
+    const idx = selectedCards.findIndex(c => c.uid === card.uid);
+    if (idx >= 0) {
+      selectedCards.splice(idx, 1);
+      imgEl.classList.remove('selected');
+    } else {
+      // 最多选6张
+      if (selectedCards.length >= 6) {
+        showToast('最多只能选6张牌');
+        return;
+      }
+      selectedCards.push(card);
+      imgEl.classList.add('selected');
+    }
+  }
+
+  // === 出牌 ===
+  function playSelectedCardsAction() {
+    if (selectedCards.length === 0) {
+      showToast('请先选择要出的牌（点击手牌）');
+      return;
+    }
+    if (selectedCards.length > 6) {
+      showToast('最多只能出6张牌');
+      return;
+    }
+
+    const result = GameEngine.playCards(game, 0, selectedCards);
+    if (!result.valid) {
+      showToast(result.error || '出牌不合法');
+      return;
+    }
+
+    // 保存已出的牌（在清空selectedCards之前）
+    const playedCards = [...selectedCards];
+    const playedType = game.lastPlay.type;
+
+    // 清除选中
+    selectedCards = [];
+    $$('#my-hand-cards .card.selected').forEach(el => el.classList.remove('selected'));
+
+    // 如果联网，同步到服务器
+    if (isMultiplayer && socket) {
+      socket.emit('play_cards', {
+        roomCode,
+        cards: playedCards,
+        cardType: playedType,
+      });
+    }
+
+    // 下一回合
+    GameEngine.nextTurn(game);
+    resetTimer();
+    renderGame();
+
+    // AI回合
+    if (isCurrentPlayerAI()) {
+      setTimeout(() => aiTakeTurn(), 800);
+    }
+  }
+
+  // === 过牌 ===
+  function passTurnAction() {
+    // 如果是领出，不能过牌
+    if (!game.lastPlay || game.lastPlayPlayerIndex === 0) {
+      showToast('你是领出者，不能过牌');
+      return;
+    }
+
+    GameEngine.passTurn(game, 0);
+    selectedCards = [];
+    $$('#my-hand-cards .card.selected').forEach(el => el.classList.remove('selected'));
+
+    if (isMultiplayer && socket) {
+      socket.emit('pass_turn', { roomCode });
+    }
+
+    GameEngine.nextTurn(game);
+    resetTimer();
+    renderGame();
+
+    if (isCurrentPlayerAI()) {
+      setTimeout(() => aiTakeTurn(), 800);
+    }
+  }
+
+  // === 更新操作按钮 ===
+  function updateActionButtons() {
+    const playBtn = $('#btn-play');
+    const passBtn = $('#btn-pass');
+
+    if (game.phase === 'finished') {
+      playBtn.disabled = true;
+      passBtn.disabled = true;
+      return;
+    }
+
+    if (game.currentPlayerIndex === 0) {
+      // 我的回合
+      playBtn.disabled = false;
+      const isLeader = !game.lastPlay || game.lastPlayPlayerIndex === 0;
+      passBtn.disabled = isLeader;
+    } else {
+      // 等待中
+      playBtn.disabled = true;
+      passBtn.disabled = true;
+    }
+  }
+
+  // === 计时器 ===
+  function startTimer() {
+    stopTimer();
+    timerSeconds = 60;
+    updateTimerDisplay();
+
+    timerInterval = setInterval(() => {
+      timerSeconds--;
+      updateTimerDisplay();
+
+      if (timerSeconds <= 10) {
+        $('#game-timer').classList.add('urgent');
+      }
+
+      if (timerSeconds <= 0) {
+        // 超时
+        if (game.currentPlayerIndex === 0) {
+          autoPlaySmallest();
+        }
+        resetTimer();
+      }
+    }, 1000);
+  }
+
+  function resetTimer() {
+    stopTimer();
+    timerSeconds = 60;
+    updateTimerDisplay();
+    $('#game-timer').classList.remove('urgent');
+    startTimer();
+  }
+
+  function stopTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+  }
+
+  function updateTimerDisplay() {
+    const el = $('#game-timer');
+    if (el) {
+      const mins = Math.floor(timerSeconds / 60);
+      const secs = timerSeconds % 60;
+      el.textContent = `⏱ ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+  }
+
+  // === 超时自动出最小牌 ===
+  function autoPlaySmallest() {
+    const hand = game.players[0].hand;
+    const level = game.level;
+    const isLeader = !game.lastPlay || game.lastPlayPlayerIndex === 0;
+
+    if (isLeader) {
+      // 领出：出最小单张
+      const smallest = GameEngine.findSmallestPlay(hand, level);
+      if (smallest) {
+        GameEngine.playCards(game, 0, smallest.cards);
+      }
+    } else {
+      // 跟牌：找最小的能压过的牌
+      const beating = GameEngine.findBeatingPlays(hand, game.lastPlay.type, level);
+      if (beating.length > 0) {
+        beating.sort((a, b) => a.type.mainRankValue - b.type.mainRankValue);
+        GameEngine.playCards(game, 0, beating[0].cards);
+      } else {
+        // 没有能压过的牌，过牌
+        GameEngine.passTurn(game, 0);
+      }
+    }
+
+    selectedCards = [];
+    GameEngine.nextTurn(game);
+    renderGame();
+
+    if (GameStorage.shouldShowTutorial()) {
+      showToast('⏰ 时间到！已自动出牌。请记得及时出牌哦~');
+      GameStorage.incrementTutorial();
+    }
+  }
+
+  // === 提示 ===
+  function showHint() {
+    if (game.currentPlayerIndex !== 0) return;
+
+    // 找到能打的牌
+    if (game.lastPlay && game.lastPlayPlayerIndex !== 0) {
+      const beating = GameEngine.findBeatingPlays(game.players[0].hand, game.lastPlay.type, game.level);
+      if (beating.length > 0) {
+        // 选最小的能压过的牌
+        beating.sort((a, b) => a.type.mainRankValue - b.type.mainRankValue);
+        showToast(`💡 建议出：${beating[0].type.type} (${beating[0].cards.length}张)`);
+        // 自动选中
+        selectedCards = beating[0].cards;
+        renderMyHand();
+      } else {
+        showToast('💡 没有能压过的牌，建议过牌');
+      }
+    } else {
+      const allPlays = GameEngine.findAllPlays(game.players[0].hand, game.level);
+      if (allPlays.length > 0) {
+        const smallest = allPlays.sort((a, b) => a.type.mainRankValue - b.type.mainRankValue)[0];
+        showToast(`💡 建议出：${smallest.type.type} (${smallest.cards.length}张)`);
+      }
+    }
+  }
+
+  // === AI回合 ===
+  function aiTakeTurn() {
+    if (game.phase === 'finished') return;
+
+    const aiIndex = game.currentPlayerIndex;
+    const aiPlayer = game.players[aiIndex];
+    if (!aiPlayer.isAI) return;
+
+    const myRemaining = game.players[0].hand.length;
+
+    // 判断当前是否领出
+    let lastPlay = null;
+    if (game.lastPlay && game.lastPlayPlayerIndex !== aiIndex) {
+      lastPlay = game.lastPlay;
+    }
+
+    const decision = AI.decidePlay(aiPlayer.hand, lastPlay, game.level, myRemaining);
+
+    if (decision) {
+      // AI出牌
+      GameEngine.playCards(game, aiIndex, decision.cards);
+    } else {
+      // AI过牌
+      if (game.lastPlay && game.lastPlayPlayerIndex !== aiIndex) {
+        GameEngine.passTurn(game, aiIndex);
+      } else {
+        // 领出不能过牌，强制出最小
+        const smallest = GameEngine.findSmallestPlay(aiPlayer.hand, game.level);
+        if (smallest) {
+          GameEngine.playCards(game, aiIndex, smallest.cards);
+        }
+      }
+    }
+
+    GameEngine.nextTurn(game);
+    resetTimer();
+    renderGame();
+
+    // 如果下一个还是AI，继续
+    if (isCurrentPlayerAI() && game.phase !== 'finished') {
+      setTimeout(() => aiTakeTurn(), 1000);
+    }
+  }
+
+  function isCurrentPlayerAI() {
+    if (!game) return false;
+    const player = game.players[game.currentPlayerIndex];
+    return player && player.isAI && !player.finished;
+  }
+
+  // === 显示结果 ===
+  function showResults() {
+    stopTimer();
+    switchScreen('result');
+
+    const results = GameEngine.getResults(game);
+    const head = results.head;
+    const isWin = head === 0; // 玩家是否是头游
+
+    $('#result-title').textContent = isWin ? '🎉 恭喜获胜！' : '😞 再接再厉';
+    $('#result-title').style.color = isWin ? 'var(--gold)' : '#ccc';
+
+    // 升级计算
+    let levelInfo = '';
+    if (game.mode === 'four') {
+      const upgrade = GameEngine.calculateUpgrade(game);
+      const lvlResult = GameEngine.levelUp(game, upgrade);
+      levelInfo = `⬆ 升 ${upgrade} 级 → 当前级牌: ${lvlResult.newLevel}`;
+      if (lvlResult.passedA) levelInfo += ' 🏆 恭喜过A！';
+    } else {
+      game.level = GameEngine.LEVEL_SEQUENCE[
+        Math.min(GameEngine.LEVEL_SEQUENCE.indexOf(game.level) + 1, GameEngine.LEVEL_SEQUENCE.length - 1)
+      ];
+      levelInfo = `⬆ 升至 ${game.level}`;
+    }
+    $('#result-level-up').textContent = levelInfo;
+
+    // 排名列表
+    const order = game.finishedPlayers;
+    const rankNames = ['头游🥇', '二游🥈', '三游🥉', '末游'];
+    const rankClasses = ['head', 'second', 'third', 'tail'];
+    let html = '';
+    for (let i = 0; i < order.length; i++) {
+      const p = game.players[order[i]];
+      html += `<div class="result-player ${rankClasses[i]}">
+        <span>${rankNames[i]}</span>
+        <span>${p.name}</span>
+      </div>`;
+    }
+    $('#result-players-list').innerHTML = html;
+
+    // 升级动画
+    setTimeout(() => {
+      showLevelUpAnimation(game.level);
+    }, 800);
+
+    // 清除选中
+    selectedCards = [];
+  }
+
+  // === 升级动画 ===
+  function showLevelUpAnimation(newLevel) {
+    const overlay = document.createElement('div');
+    overlay.className = 'level-up-overlay';
+    overlay.innerHTML = `
+      <div class="level-up-stars">⭐✨⭐</div>
+      <div class="level-up-text">级牌: ${newLevel}</div>
+      <div style="color:var(--gold-light);margin-top:8px;">升级成功！</div>
+    `;
+    document.body.appendChild(overlay);
+    setTimeout(() => overlay.remove(), 2000);
+  }
+
+  // === 下一局 ===
+  function startNextGame() {
+    const currentLevel = game.level;
+    const currentMode = game.mode;
+
+    // 计算升级
+    if (currentMode === 'four') {
+      const upgrade = GameEngine.calculateUpgrade(game);
+      const lvlResult = GameEngine.levelUp(game, upgrade);
+    } else {
+      const idx = GameEngine.LEVEL_SEQUENCE.indexOf(currentLevel);
+      game.level = GameEngine.LEVEL_SEQUENCE[Math.min(idx + 1, GameEngine.LEVEL_SEQUENCE.length - 1)];
+    }
+
+    // 保存旧游戏结果（进贡需要）
+    const oldResults = GameEngine.getResults(game);
+    const tributes = GameEngine.calculateTribute(game);
+    const resisted = (currentMode === 'four') ? GameEngine.checkTributeResist(game) : false;
+    const oldPlayerConfig = game.players.map(p => ({ name: p.name, isAI: p.isAI }));
+
+    // 创建新游戏（重新发牌）
+    game = GameEngine.createGame({
+      mode: currentMode,
+      playerNames: oldPlayerConfig.map(p => p.name),
+      aiSlots: oldPlayerConfig.map((p, i) => p.isAI ? i : -1).filter(i => i >= 0),
+    });
+    game.level = currentLevel;
+
+    // 执行进贡（在新手牌上进行）
+    if (tributes.length > 0 && !resisted) {
+      // 重新计算进贡（因为手牌变了）
+      const newTributes = GameEngine.calculateTribute(game);
+      if (newTributes.length > 0) {
+        GameEngine.executeTribute(game, newTributes);
+        // 确定先手
+        const firstPlayer = GameEngine.getTributeFirstPlayer(game, newTributes, false);
+        game.currentPlayerIndex = firstPlayer;
+        game.lastPlayPlayerIndex = firstPlayer;
+      }
+    } else {
+      // 抗贡或无进贡：头游先出
+      const firstPlayer = resisted ? oldResults.head : 0;
+      game.currentPlayerIndex = firstPlayer;
+      game.lastPlayPlayerIndex = firstPlayer;
+    }
+
+    startGameScreen();
+    dealAnimation();
+  }
+
+  // === 存档 ===
+  function saveCurrentGame() {
+    if (!game || game.phase === 'finished') return;
+    GameStorage.saveGame(game, {
+      totalWins: 0,
+      totalGames: 0,
+    });
+  }
+
+  // === Toast消息 ===
+  function showToast(msg) {
+    const existing = document.querySelector('.tutorial-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.className = 'tutorial-toast';
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2500);
+  }
+
+  function showEmoji(data) {
+    showToast(`${data.emoji}`);
+  }
+
+  // === 启动 ===
+  init();
+
+})();

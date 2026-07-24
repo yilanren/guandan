@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no">
+<title>掼蛋 - 在线互动扑克游戏</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ============ 1. 主菜单 ============ -->
+  <div id="menu-screen" class="screen active">
+    <div class="menu-title">🃏 掼 蛋</div>
+    <div class="menu-subtitle">经典扑克 · 智力对决</div>
+
+    <button class="menu-btn" data-mode="single">
+      <span class="icon">🤖</span> 与 AI 对战
+    </button>
+    <button class="menu-btn" data-mode="two">
+      <span class="icon">👤</span> 两人对局
+    </button>
+    <button class="menu-btn" data-mode="three">
+      <span class="icon">👥</span> 三人对局
+    </button>
+    <button class="menu-btn" data-mode="four">
+      <span class="icon">👥👥</span> 四人对局（经典）
+    </button>
+
+    <button class="menu-btn tutorial-btn" id="btn-tutorial">
+      📖 新手教程
+    </button>
+  </div>
+
+  <!-- ============ 2. 存档提示 ============ -->
+  <div id="save-screen" class="screen">
+    <div class="save-prompt">
+      <h3>📂 发现上次存档</h3>
+      <p style="margin-bottom:12px;font-size:0.9em;">检测到未完成的牌局，是否继续？</p>
+      <button class="menu-btn" id="btn-continue">📂 继续上一轮</button>
+      <button class="menu-btn" id="btn-restart">🔄 重新开始</button>
+    </div>
+  </div>
+
+  <!-- ============ 3. 模式选择（队友类型） ============ -->
+  <div id="mode-select-screen" class="screen">
+    <div class="mode-select-title" id="mode-select-title">选择模式</div>
+    <div style="font-size:0.85em;margin-bottom:8px;opacity:0.7;">请选择队友类型：</div>
+
+    <button class="menu-btn" id="btn-ai-teammate">
+      🤖 队友是 AI
+    </button>
+    <button class="menu-btn" id="btn-real-teammate">
+      👤 队友是真人
+    </button>
+
+    <button class="menu-btn tutorial-btn" id="btn-mode-back" style="margin-top:12px;">
+      ← 返回
+    </button>
+  </div>
+
+  <!-- ============ 4. 房间等待 ============ -->
+  <div id="room-screen" class="screen">
+    <div class="menu-title" style="font-size:1.5em;">🏠 游戏房间</div>
+    <div style="font-size:0.85em;opacity:0.7;">分享房间号邀请好友加入：</div>
+    <div class="room-code" id="room-code">------</div>
+    <button class="menu-btn" style="font-size:0.8em;padding:8px 16px;" id="btn-copy-code">📋 复制房间号</button>
+
+    <div class="room-players" id="room-players-list"></div>
+
+    <div class="room-waiting" id="room-waiting-text">等待玩家加入...</div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
+      <button class="menu-btn" style="font-size:0.85em;padding:10px 20px;" id="btn-add-ai">🤖 添加AI</button>
+      <button class="menu-btn" style="font-size:0.85em;padding:10px 20px;" id="btn-start-game">▶ 开始游戏</button>
+    </div>
+    <button class="menu-btn tutorial-btn" id="btn-leave-room">← 离开房间</button>
+  </div>
+
+  <!-- ============ 5. 色子画面 ============ -->
+  <div id="dice-screen" class="screen">
+    <div style="font-size:1.2em;color:var(--gold);">🎲 摇色子决定先手</div>
+    <div style="font-size:0.85em;opacity:0.7;text-align:center;">
+      摇到<span style="color:#3498db;">🔵 蓝色</span>你先手<br>
+      摇到<span style="color:#e74c3c;">🔴 红色</span>对方先手
+    </div>
+    <div class="dice-container">
+      <div class="dice" id="dice-element">🎲</div>
+    </div>
+    <div class="dice-result" id="dice-result" style="display:none;"></div>
+    <button class="menu-btn" id="btn-roll-dice">🎲 摇色子</button>
+  </div>
+
+  <!-- ============ 6. 游戏界面 ============ -->
+  <div id="game-screen" class="screen">
+    <!-- 顶部信息栏 -->
+    <div class="game-top-bar">
+      <span>🃏 级牌：<span class="game-level-badge" id="game-level">2</span></span>
+      <span style="font-size:0.8em;" id="game-round-info">第1轮</span>
+      <span class="game-timer" id="game-timer">⏱ 00:60</span>
+    </div>
+
+    <!-- 对手区域 -->
+    <div class="opponents-area" id="opponents-area"></div>
+
+    <!-- 出牌区 -->
+    <div class="play-area" id="play-area">
+      <div class="play-area-label">出牌区</div>
+      <div class="play-area-cards" id="play-area-cards"></div>
+      <div class="play-area-info" id="play-area-info"></div>
+    </div>
+
+    <!-- 我的手牌 -->
+    <div class="my-hand-area" id="my-hand-area">
+      <div class="my-hand" id="my-hand-cards"></div>
+    </div>
+
+    <!-- 操作按钮 -->
+    <div class="action-buttons">
+      <button class="action-btn hint" id="btn-hint">💡提示</button>
+      <button class="action-btn pass" id="btn-pass">过牌</button>
+      <button class="action-btn play" id="btn-play">出牌</button>
+    </div>
+  </div>
+
+  <!-- ============ 7. 结果画面 ============ -->
+  <div id="result-screen" class="screen">
+    <div class="result-title" id="result-title">🎉 游戏结束</div>
+    <div id="result-level-up" style="color:var(--gold);font-size:1.2em;margin-bottom:8px;"></div>
+    <div class="result-players" id="result-players-list"></div>
+    <button class="menu-btn" id="btn-next-game">▶ 下一局</button>
+    <button class="menu-btn tutorial-btn" id="btn-back-menu">🏠 返回菜单</button>
+  </div>
+
+  <!-- ============ 8. 新手教程 ============ -->
+  <div id="tutorial-screen" class="screen">
+    <div style="text-align:left;max-width:360px;font-size:0.9em;line-height:1.8;">
+      <h3 style="color:var(--gold);text-align:center;margin-bottom:12px;">📖 新手教程</h3>
+      <p>🎯 <b>目标：</b>尽快出完手中所有牌</p>
+      <p>🃏 <b>牌型：</b>单张、对子、三同张、三带二、顺子(5张)、三连对(6张)、钢板(6张)、同花顺、炸弹(4-6张)</p>
+      <p>📏 <b>限制：</b>每手出1-6张牌</p>
+      <p>🔄 <b>出牌：</b>下家必须出同牌型更大的牌，或用炸弹/同花顺压</p>
+      <p>⏱ <b>计时：</b>每回合60秒，超时自动出最小牌</p>
+      <p>🌸 <b>逢人配：</b>红桃级牌可代替任意非王牌</p>
+      <p>⭐ <b>级牌：</b>当前级别的牌仅次于大小王</p>
+      <p>💣 <b>炸弹：</b>4-6张同点数牌，可压任何牌型</p>
+      <p>👑 <b>四大天王：</b>2大王+2小王，最大牌型</p>
+    </div>
+    <button class="menu-btn" id="btn-tutorial-close" style="margin-top:16px;">✅ 我知道了</button>
+  </div>
+
+</div>
+
+<!-- 脚本 -->
+<script src="/socket.io/socket.io.js"></script>
+<script src="js/cards.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/game.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/main.js"></script>
+
+</body>
+</html>

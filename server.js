@@ -3,6 +3,9 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 
+// 加载牌型引擎（服务端用）
+const CardEngine = require('./public/js/cards.js');
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -26,27 +29,51 @@ function tryMatchPlayers(mode) {
   if (queue.length >= totalSlots) {
     const matched = queue.splice(0, totalSlots);
     const roomCode = generateRoomCode();
-    // 随机先手
     const firstSeat = Math.floor(Math.random() * totalSlots);
-    rooms[roomCode] = {
+    const decksNeeded = { two: 1, three: 2, four: 2 }[mode];
+    const cardsPerPlayer = 27;
+
+    // 服务端统一生成牌堆
+    let deck = [];
+    for (let i = 0; i < decksNeeded; i++) {
+      deck = deck.concat(CardEngine.createDeck(i));
+    }
+    deck = CardEngine.shuffle(deck);
+
+    // 发牌给每个玩家
+    const playerHands = [];
+    for (let i = 0; i < totalSlots; i++) {
+      playerHands.push(deck.slice(i * cardsPerPlayer, (i + 1) * cardsPerPlayer));
+    }
+
+    const room = {
       code: roomCode, mode, totalSlots, host: matched[0],
       players: matched.map((sid, i) => ({
         id: sid, name: `玩家${i + 1}`, seat: i, ready: true, isAI: false
       })),
+      playerHands, // 服务端统一手牌
       gameState: { currentPlayerIndex: firstSeat, lastPlay: null, lastPlayPlayerIndex: firstSeat, phase: 'playing' },
       started: false,
     };
+    rooms[roomCode] = room;
+
     matched.forEach(sid => {
       const sock = io.sockets.sockets.get(sid);
       if (sock) sock.join(roomCode);
     });
-    // 告诉每个玩家他们的座位和谁先手
+
+    // 发给每个玩家：自己的手牌 + 对手的手牌数
     matched.forEach((sid, i) => {
       const sock = io.sockets.sockets.get(sid);
       if (sock) {
         sock.emit('match_found', {
-          roomCode, seat: i, firstSeat,
-          players: rooms[roomCode].players,
+          roomCode, seat: i, firstSeat, level: '2',
+          myHand: playerHands[i],
+          opponents: room.players.filter((_, j) => j !== i).map((p, j) => ({
+            name: p.name, seat: p.seat, handSize: playerHands[p.seat].length,
+          })),
+          totalPlayers: totalSlots,
+          players: room.players,
         });
       }
     });

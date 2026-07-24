@@ -265,7 +265,7 @@
       });
     });
 
-    // 匹配成功
+    // 匹配成功 → 使用服务端统一手牌
     socket.on('match_found', (data) => {
       roomCode = data.roomCode;
       playerSeat = data.seat;
@@ -274,17 +274,42 @@
       $('#room-waiting-text').textContent = '✅ 匹配成功！';
       renderRoomPlayers(data.players);
 
-      // 初始化游戏
+      // 用服务端发的手牌构建游戏
       const names = data.players.map(p => p.name);
-      game = GameEngine.createGame({
-        mode: currentMode,
-        playerNames: names,
-        aiSlots: [], // 全真人，无AI
-      });
-      game.currentPlayerIndex = firstSeat;
-      game.lastPlayPlayerIndex = firstSeat;
+      const allHands = [];
+      allHands[playerSeat] = data.myHand; // 自己的手牌
+      data.opponents.forEach(o => { allHands[o.seat] = []; }); // 对手手牌未知
 
-      // 1.5秒后显示谁先手
+      game = {
+        mode: currentMode,
+        totalPlayers: data.totalPlayers,
+        players: data.players.map((p, i) => ({
+          id: p.id,
+          name: p.name,
+          hand: i === playerSeat ? data.myHand : (allHands[i] || []),
+          isAI: false,
+          seat: i,
+          finished: false,
+          finishOrder: -1,
+        })),
+        currentPlayerIndex: firstSeat,
+        lastPlay: null,
+        lastPlayPlayerIndex: firstSeat,
+        passCount: 0,
+        roundNumber: 0,
+        level: data.level || '2',
+        phase: 'playing',
+        history: [],
+        finishedPlayers: [],
+        tributePhase: false,
+        tributes: [],
+      };
+
+      // 对手手牌只保留数量
+      data.opponents.forEach(o => {
+        game.players[o.seat].hand = new Array(o.handSize).fill({ suit: '?', rank: '?', id: '?', uid: '?' });
+      });
+
       setTimeout(() => {
         const isMyTurn = firstSeat === playerSeat;
         showDiceResultForMultiplayer(isMyTurn, firstSeat);
@@ -294,24 +319,23 @@
     // 对手出牌了
     socket.on('opponent_played', (data) => {
       if (!game || game.phase === 'finished') return;
-      // 更新游戏状态
       game.lastPlay = { playerIndex: data.seat, cards: data.cards, type: data.cardType };
       game.lastPlayPlayerIndex = data.seat;
       game.passCount = 0;
       game.roundNumber++;
       game.history.push({ round: game.roundNumber, playerIndex: data.seat, cards: data.cards, type: data.cardType });
-      // 从对手手牌移除（如果在本地有记录的话）
+      // 减对手手牌数
       const oppPlayer = game.players[data.seat];
       if (oppPlayer && oppPlayer.hand) {
-        oppPlayer.hand = oppPlayer.hand.filter(c => !data.cards.find(dc => dc.uid === c.uid));
+        oppPlayer.hand = oppPlayer.hand.slice(data.cards.length);
         if (oppPlayer.hand.length === 0) {
           oppPlayer.finished = true;
           oppPlayer.finishOrder = game.finishedPlayers.length + 1;
           game.finishedPlayers.push(data.seat);
+          if (game.finishedPlayers.length >= game.totalPlayers - 1) game.phase = 'finished';
         }
       }
       game.currentPlayerIndex = (data.seat + 1) % game.totalPlayers;
-      // 跳过已完成的玩家
       while (game.players[game.currentPlayerIndex] && game.players[game.currentPlayerIndex].finished) {
         game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.totalPlayers;
       }

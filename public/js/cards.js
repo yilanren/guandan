@@ -348,7 +348,7 @@ function checkTriplePair(cards, level) {
     if (pairs.length === 3) {
       const ranks = pairs.map(r => RANK_VALUE[r]).sort((a, b) => a - b);
       if (ranks[2] - ranks[0] === 2 && ranks[1] - ranks[0] === 1) {
-        return { type: 'triple_pair', weight: 4, mainRank: RANK_ORDER[ranks[2]], mainRankValue: ranks[2] };
+        return { type: 'triple_straight', weight: 4, mainRank: RANK_ORDER[ranks[2]], mainRankValue: ranks[2] };
       }
     }
   }
@@ -507,7 +507,7 @@ function findAllPlays(hand, level) {
     const seq = ranks.slice(i, i + 3);
     const vals = seq.map(r => RANK_VALUE[r]);
     if (vals[2] - vals[0] === 2 && seq.every(r => groups[r].length >= 2)) {
-      addPlay(seq.flatMap(r => groups[r].slice(0, 2)), { type: 'triple_pair', weight: 4, mainRank: seq[2], mainRankValue: vals[2] });
+      addPlay(seq.flatMap(r => groups[r].slice(0, 2)), { type: 'triple_straight', weight: 4, mainRank: seq[2], mainRankValue: vals[2] });
     }
   }
 

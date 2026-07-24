@@ -238,10 +238,10 @@ body {
   100% { transform: scale(1); }
 }
 
-/* === 游戏界面 === */
+/* === 游戏界面（新版布局） === */
 #game-screen {
   flex-direction: column;
-  padding: 6px;
+  padding: 4px 8px;
   gap: 4px;
   justify-content: flex-start;
 }
@@ -252,10 +252,10 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 10px;
-  background: rgba(0,0,0,0.3);
+  padding: 5px 10px;
+  background: rgba(0,0,0,0.35);
   border-radius: 8px;
-  font-size: 0.85em;
+  font-size: 0.8em;
   flex-shrink: 0;
 }
 .game-level-badge {
@@ -267,7 +267,7 @@ body {
   font-size: 0.9em;
 }
 .game-timer {
-  font-size: 1.2em;
+  font-size: 1.1em;
   font-weight: 700;
   color: var(--gold-light);
 }
@@ -276,188 +276,292 @@ body {
   animation: pulse 0.5s infinite;
 }
 
-/* 对手区域 */
+/* 对手区域（紧凑） */
 .opponents-area {
   width: 100%;
   display: flex;
   justify-content: center;
-  gap: 8px;
+  gap: 12px;
   flex-shrink: 0;
-  min-height: 100px;
+  padding: 2px 0;
 }
-
 .opponent-slot {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
-
 .opponent-name {
-  font-size: 0.75em;
+  font-size: 0.7em;
   color: var(--gold-light);
   font-weight: 600;
 }
-
-.opponent-cards {
+.opponent-cards-row {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0;
+  align-items: center;
+  gap: 2px;
 }
-
-.opponent-cards .card-back {
-  width: 28px;
-  height: 40px;
-  margin-left: -14px;
+.opponent-cards-row img {
+  width: 24px;
+  height: 34px;
+  margin-left: -12px;
+  border-radius: 2px;
 }
-
-.opponent-cards .card-back:first-child {
-  margin-left: 0;
-}
-
+.opponent-cards-row img:first-child { margin-left: 0; }
 .opponent-count {
-  font-size: 0.7em;
+  font-size: 0.65em;
   background: rgba(0,0,0,0.5);
   padding: 2px 8px;
   border-radius: 10px;
 }
-
 .opponent-slot.active-turn {
-  background: rgba(255,215,0,0.15);
+  background: rgba(255,215,0,0.2);
   border-radius: 8px;
-  padding: 4px 8px;
+  padding: 3px 8px;
+  box-shadow: 0 0 8px rgba(255,215,0,0.3);
 }
 
-/* 出牌区 */
+/* === 出牌区（只显示当前牌） === */
 .play-area {
   width: 100%;
-  min-height: 90px;
   flex-shrink: 0;
+  background: rgba(0,0,0,0.2);
+  border-radius: 10px;
+  padding: 10px;
+  min-height: 80px;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  background: rgba(0,0,0,0.15);
-  border-radius: 8px;
-  padding: 8px;
-  position: relative;
 }
-
 .play-area-label {
-  font-size: 0.7em;
-  color: rgba(255,255,255,0.5);
-  position: absolute;
-  top: 4px;
-  left: 8px;
+  font-size: 0.65em;
+  color: rgba(255,255,255,0.4);
+  text-align: center;
+  margin-bottom: 2px;
 }
-
-.play-area-cards {
+.play-round {
   display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.play-area-cards img {
-  width: 45px;
-  height: 63px;
-  border-radius: 4px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-}
-
-.play-area-info {
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 6px;
   font-size: 0.75em;
+  animation: fadeInUp 0.2s ease-out;
+  will-change: transform, opacity;
+}
+.play-round .player-tag {
+  font-weight: 700;
+  min-width: 50px;
   color: var(--gold-light);
 }
+.play-round .player-tag.me { color: #4fc3f7; }
+.play-round .player-tag.ai { color: #ef9a9a; }
+.play-round .play-cards-imgs {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.play-round .play-type-tag {
+  font-size: 0.7em;
+  background: rgba(255,255,255,0.1);
+  padding: 1px 6px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.play-round .pass-tag {
+  color: #999;
+  font-style: italic;
+}
+.play-round.leader { border-left: 2px solid var(--gold); }
 
-/* 我的手牌 */
+/* 当前出牌提示 */
+.play-current-hint {
+  text-align: center;
+  font-size: 0.8em;
+  color: var(--gold-light);
+  padding: 4px;
+  font-weight: 600;
+}
+
+/* === 我的手牌（按钮上方） === */
 .my-hand-area {
   width: 100%;
   flex-grow: 1;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  min-height: 140px;
-  position: relative;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 6px 0;
+  min-height: 80px;
+  overflow-x: auto;
 }
-
 .my-hand {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   align-items: flex-end;
   gap: 0;
-  padding: 4px;
-  max-width: 100%;
+  padding: 0 4px;
 }
-
-.my-hand .card {
-  width: 50px;
-  height: 70px;
-  margin-left: -22px;
-  cursor: pointer;
-  border-radius: 4px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-  transition: transform 0.15s, box-shadow 0.15s;
-  position: relative;
-}
-
-.my-hand .card:first-child {
-  margin-left: 0;
-}
-
-.my-hand .card.selected {
-  transform: translateY(-16px);
-  box-shadow: 0 6px 16px rgba(255,215,0,0.5);
-  border: 2px solid var(--gold);
+/* 手牌区域 poker-card 复用样式 */
+.my-hand .poker-card:first-child { margin-left: 0; }
+.my-hand .poker-card:hover { z-index: 10; }
+.my-hand .poker-card.selected {
+  transform: translateY(-18px) !important;
+  box-shadow: 0 6px 18px rgba(255,215,0,0.6) !important;
+  border: 2px solid var(--gold) !important;
   border-radius: 6px;
+  z-index: 20 !important;
 }
 
-.my-hand .card:active {
-  transform: translateY(-8px);
+/* === 纯CSS扑克牌（不用图片，加载快） === */
+.poker-card {
+  width: 46px; height: 64px;
+  margin-left: -20px;
+  background: linear-gradient(160deg, #fff 0%, #f7f3ea 50%, #f0e8d8 100%);
+  border: 1px solid #c8bfb0;
+  border-radius: 4px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.35);
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+  user-select: none;
+  box-sizing: border-box;
+  font-family: var(--font);
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease;
+  will-change: transform;
+}
+.poker-card:first-child { margin-left: 0; }
+.poker-card:hover { z-index: 10; }
+.poker-card.selected {
+  transform: translateY(-18px) !important;
+  box-shadow: 0 6px 18px rgba(255,215,0,0.6) !important;
+  border: 2px solid var(--gold) !important;
+  border-radius: 6px;
+  z-index: 20 !important;
+}
+.poker-card .corner-rank {
+  position: absolute; top: 1px; left: 4px;
+  font-size: 12px; font-weight: 900; line-height: 1;
+}
+.poker-card .corner-suit {
+  position: absolute; top: 14px; left: 4px;
+  font-size: 10px; line-height: 1;
+}
+.poker-card .center-suit {
+  font-size: 28px; line-height: 1; margin-top: 8px;
+}
+.poker-card .bottom-rank {
+  position: absolute; bottom: 1px; right: 4px;
+  font-size: 12px; font-weight: 900; line-height: 1;
+  transform: rotate(180deg);
+}
+.poker-card.red .corner-rank,
+.poker-card.red .bottom-rank,
+.poker-card.red .center-suit { color: #c0392b; }
+.poker-card.black .corner-rank,
+.poker-card.black .bottom-rank,
+.poker-card.black .center-suit { color: #1a1a1a; }
+
+/* 逢人配（万能牌）特殊样式 */
+.poker-card.wild-card {
+  border-color: #e74c3c;
+  box-shadow: 0 0 8px rgba(231, 76, 60, 0.5), 0 2px 5px rgba(0,0,0,0.35);
+}
+.poker-card-sm.wild-card {
+  border-color: #e74c3c;
+  box-shadow: 0 0 5px rgba(231, 76, 60, 0.5), 0 1px 3px rgba(0,0,0,0.3);
+}
+.wild-badge {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: #e74c3c;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  padding: 1px 4px;
+  border-radius: 10px;
+  z-index: 5;
+  opacity: 0.85;
 }
 
-/* 操作按钮 */
+/* 出牌区的小号牌 */
+.poker-card-sm {
+  width: 36px; height: 50px;
+  margin: 0;
+  background: linear-gradient(160deg, #fff 0%, #f7f3ea 50%, #f0e8d8 100%);
+  border: 1px solid #c8bfb0;
+  border-radius: 3px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  position: relative;
+  box-sizing: border-box;
+  font-family: var(--font);
+}
+.poker-card-sm .corner-rank {
+  position: absolute; top: 1px; left: 2px;
+  font-size: 9px; font-weight: 900; line-height: 1;
+}
+.poker-card-sm .corner-suit {
+  position: absolute; top: 10px; left: 2px;
+  font-size: 7px; line-height: 1;
+}
+.poker-card-sm .center-suit {
+  font-size: 20px; line-height: 1;
+}
+.poker-card-sm.red .corner-rank,
+.poker-card-sm.red .corner-suit,
+.poker-card-sm.red .center-suit { color: #c0392b; }
+.poker-card-sm.black .corner-rank,
+.poker-card-sm.black .corner-suit,
+.poker-card-sm.black .center-suit { color: #1a1a1a; }
+
+/* 操作按钮（最底部） */
 .action-buttons {
   display: flex;
-  gap: 10px;
-  padding: 6px;
+  gap: 8px;
+  padding: 6px 0 10px;
   flex-shrink: 0;
 }
-
 .action-btn {
-  padding: 12px 24px;
+  padding: 13px 20px;
   border: none;
   border-radius: 25px;
-  font-size: 1em;
+  font-size: 0.95em;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.12s;
   font-family: var(--font);
   letter-spacing: 1px;
 }
-.action-btn:active { transform: scale(0.95); }
-
+.action-btn:active { transform: scale(0.94); }
 .action-btn.play {
   background: var(--gold);
   color: var(--bg-dark);
   flex-grow: 1;
 }
 .action-btn.pass {
-  background: rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.12);
   color: var(--text-light);
-  border: 1px solid rgba(255,255,255,0.3);
+  border: 1px solid rgba(255,255,255,0.25);
 }
 .action-btn.hint {
-  background: rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.08);
   color: var(--text-light);
-  font-size: 0.85em;
+  font-size: 0.8em;
+  padding: 10px 16px;
 }
 .action-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   pointer-events: none;
 }
 
@@ -597,6 +701,10 @@ body {
 @keyframes fadeInDown {
   from { transform: translateX(-50%) translateY(-20px); opacity: 0; }
   to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+@keyframes fadeInUp {
+  from { transform: translateY(6px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 /* === 响应式：大屏适配 === */

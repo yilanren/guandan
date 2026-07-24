@@ -167,7 +167,7 @@ const GameEngine = (function() {
 
   /**
    * 过牌
-   * 规则：连续两人Pass → 新一轮，由最后出牌者领出
+   * 规则：除领出者外所有活跃玩家都Pass → 新一轮，由最后出牌者领出
    */
   function passTurn(gameState, playerIndex) {
     gameState.passCount++;
@@ -177,8 +177,11 @@ const GameEngine = (function() {
       pass: true,
     });
 
-    // 连续两人Pass → 新一轮
-    if (gameState.passCount >= 2) {
+    // 所有活跃玩家（除最后出牌者）都过牌 → 新一轮
+    const activePlayers = gameState.players.filter(p => !p.finished);
+    const needed = activePlayers.length - 1; // 需要过牌的人数（除领出者外）
+
+    if (gameState.passCount >= needed) {
       gameState.lastPlay = null;
       gameState.passCount = 0;
       // 最后出牌者领出新一轮

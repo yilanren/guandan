@@ -31,6 +31,9 @@
       <span class="icon">👥👥</span> 四人对局（经典）
     </button>
 
+    <button class="menu-btn" id="btn-join-room" style="border-color:rgba(255,255,255,0.4);color:rgba(255,255,255,0.8);">
+      🔗 加入房间
+    </button>
     <button class="menu-btn tutorial-btn" id="btn-tutorial">
       📖 新手教程
     </button>
@@ -63,12 +66,29 @@
     </button>
   </div>
 
+  <!-- ============ 3.5. 加入房间 ============ -->
+  <div id="join-room-screen" class="screen">
+    <div class="menu-title" style="font-size:1.4em;">🔗 加入房间</div>
+    <div style="font-size:0.85em;opacity:0.7;margin-bottom:12px;">输入好友分享的房间号</div>
+
+    <input type="text" id="join-room-input" placeholder="请输入6位房间号"
+      style="width:100%;max-width:280px;padding:14px 16px;border:2px solid var(--gold);border-radius:12px;
+      background:rgba(0,0,0,0.4);color:#fff;font-size:1.3em;text-align:center;letter-spacing:4px;
+      font-family:var(--font);text-transform:uppercase;outline:none;"
+      maxlength="6" autocomplete="off">
+
+    <button class="menu-btn" id="btn-confirm-join" style="margin-top:8px;">▶ 加入</button>
+    <div id="join-error" style="color:#e74c3c;font-size:0.8em;min-height:20px;margin-top:4px;"></div>
+    <button class="menu-btn tutorial-btn" id="btn-join-back" style="margin-top:8px;">← 返回</button>
+  </div>
+
   <!-- ============ 4. 房间等待 ============ -->
   <div id="room-screen" class="screen">
     <div class="menu-title" style="font-size:1.5em;">🏠 游戏房间</div>
     <div style="font-size:0.85em;opacity:0.7;">分享房间号邀请好友加入：</div>
     <div class="room-code" id="room-code">------</div>
-    <button class="menu-btn" style="font-size:0.8em;padding:8px 16px;" id="btn-copy-code">📋 复制房间号</button>
+    <button class="menu-btn" style="font-size:0.8em;padding:8px 16px;" id="btn-copy-code">📋 复制房间号发给好友</button>
+    <div style="font-size:0.7em;opacity:0.5;">好友在主菜单点"加入房间"输入此号</div>
 
     <div class="room-players" id="room-players-list"></div>
 
@@ -99,30 +119,31 @@
   <div id="game-screen" class="screen">
     <!-- 顶部信息栏 -->
     <div class="game-top-bar">
-      <span>🃏 级牌：<span class="game-level-badge" id="game-level">2</span></span>
-      <span style="font-size:0.8em;" id="game-round-info">第1轮</span>
+      <span>🃏 <span class="game-level-badge" id="game-level">2</span></span>
       <span class="game-timer" id="game-timer">⏱ 00:60</span>
     </div>
 
     <!-- 对手区域 -->
     <div class="opponents-area" id="opponents-area"></div>
 
-    <!-- 出牌区 -->
+    <!-- 出牌区（放大 + 记录） -->
     <div class="play-area" id="play-area">
-      <div class="play-area-label">出牌区</div>
-      <div class="play-area-cards" id="play-area-cards"></div>
-      <div class="play-area-info" id="play-area-info"></div>
+      <div class="play-area-label">—— 出牌记录 ——</div>
+      <div id="play-history"></div>
     </div>
 
+    <!-- 当前轮到谁 -->
+    <div class="play-current-hint" id="play-current-hint"></div>
+
     <!-- 我的手牌 -->
-    <div class="my-hand-area" id="my-hand-area">
+    <div class="my-hand-area">
       <div class="my-hand" id="my-hand-cards"></div>
     </div>
 
     <!-- 操作按钮 -->
     <div class="action-buttons">
       <button class="action-btn hint" id="btn-hint">💡提示</button>
-      <button class="action-btn pass" id="btn-pass">过牌</button>
+      <button class="action-btn pass" id="btn-pass">要不起</button>
       <button class="action-btn play" id="btn-play">出牌</button>
     </div>
   </div>

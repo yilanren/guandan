@@ -514,9 +514,7 @@
   // === 即时发牌（不逐张动画） ===
   function instantDeal() {
     renderGame();
-    if (isCurrentPlayerAI()) {
-      setTimeout(() => aiTakeTurn(), 800);
-    }
+    // AI回合由 renderGame() 统一触发
   }
 
   // === 渲染游戏 ===

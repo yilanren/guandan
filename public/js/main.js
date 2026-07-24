@@ -445,7 +445,7 @@
 
   function handleRemotePass(data) {
     // 远程玩家过牌
-    GameEngine.passTurn(game, data.playerSeat);
+    GameEngine.passTurn(game, data.seat);
     GameEngine.nextTurn(game);
     renderGame();
   }
@@ -530,7 +530,7 @@
 
     let html = '';
     for (let i = 0; i < game.totalPlayers; i++) {
-      if (i === 0) continue;
+      if (i === playerSeat) continue;
       const player = game.players[i];
       const activeClass = (game.currentPlayerIndex === i && !player.finished) ? ' active-turn' : '';
 
@@ -646,13 +646,13 @@
     const container = $('#my-hand-cards');
     if (!container) return;
     container.innerHTML = '';
-    for (const card of game.players[0].hand) {
+    for (const card of game.players[playerSeat].hand) {
       const el = createCardElement(card);
       if (selectedCards.find(c => c.uid === card.uid)) el.classList.add('selected');
       container.appendChild(el);
     }
     const hint = $('#play-current-hint');
-    const myLen = game.players[0].hand.length;
+    const myLen = game.players[playerSeat].hand.length;
     if (hint && myLen <= 10) {
       const baseText = (hint.textContent || '').split('|')[0];
       hint.textContent = baseText + ` | ⚠️ 你剩 ${myLen} 张`;
@@ -687,7 +687,7 @@
       return;
     }
 
-    const result = GameEngine.playCards(game, 0, selectedCards);
+    const result = GameEngine.playCards(game, playerSeat, selectedCards);
     if (!result.valid) {
       showToast(result.error || '出牌不合法');
       return;
@@ -725,12 +725,12 @@
   // === 要不起 ===
   function passTurnAction() {
     // 如果是领出，不能要不起
-    if (!game.lastPlay || game.lastPlayPlayerIndex === 0) {
+    if (!game.lastPlay || game.lastPlayPlayerIndex === playerSeat) {
       showToast('你是领出者，不能要不起');
       return;
     }
 
-    const passResult = GameEngine.passTurn(game, 0);
+    const passResult = GameEngine.passTurn(game, playerSeat);
     selectedCards = [];
     $$('#my-hand-cards .poker-card.selected').forEach(el => el.classList.remove('selected'));
 
@@ -763,10 +763,10 @@
       return;
     }
 
-    if (game.currentPlayerIndex === 0) {
+    if (game.currentPlayerIndex === playerSeat) {
       // 我的回合
       playBtn.disabled = false;
-      const isLeader = !game.lastPlay || game.lastPlayPlayerIndex === 0;
+      const isLeader = !game.lastPlay || game.lastPlayPlayerIndex === playerSeat;
       passBtn.disabled = isLeader;
     } else {
       // 等待中
@@ -791,7 +791,7 @@
 
       if (timerSeconds <= 0) {
         // 超时
-        if (game.currentPlayerIndex === 0) {
+        if (game.currentPlayerIndex === playerSeat) {
           autoPlaySmallest();
         }
         resetTimer();
@@ -825,23 +825,23 @@
 
   // === 超时自动出最小牌 ===
   function autoPlaySmallest() {
-    const hand = game.players[0].hand;
+    const hand = game.players[playerSeat].hand;
     const level = game.level;
-    const isLeader = !game.lastPlay || game.lastPlayPlayerIndex === 0;
+    const isLeader = !game.lastPlay || game.lastPlayPlayerIndex === playerSeat;
 
     let newRound = false;
     if (isLeader) {
       const smallest = GameEngine.findSmallestPlay(hand, level);
       if (smallest) {
-        GameEngine.playCards(game, 0, smallest.cards);
+        GameEngine.playCards(game, playerSeat, smallest.cards);
       }
     } else {
       const beating = GameEngine.findBeatingPlays(hand, game.lastPlay.type, level);
       if (beating.length > 0) {
         beating.sort((a, b) => a.type.mainRankValue - b.type.mainRankValue);
-        GameEngine.playCards(game, 0, beating[0].cards);
+        GameEngine.playCards(game, playerSeat, beating[0].cards);
       } else {
-        const pr = GameEngine.passTurn(game, 0);
+        const pr = GameEngine.passTurn(game, playerSeat);
         newRound = pr.newRound;
       }
     }
@@ -864,7 +864,7 @@
 
     // 找到能打的牌
     if (game.lastPlay && game.lastPlayPlayerIndex !== 0) {
-      const beating = GameEngine.findBeatingPlays(game.players[0].hand, game.lastPlay.type, game.level);
+      const beating = GameEngine.findBeatingPlays(game.players[playerSeat].hand, game.lastPlay.type, game.level);
       if (beating.length > 0) {
         // 选最小的能压过的牌
         beating.sort((a, b) => a.type.mainRankValue - b.type.mainRankValue);
@@ -876,7 +876,7 @@
         showToast('💡 没有能压过的牌，建议要不起');
       }
     } else {
-      const allPlays = GameEngine.findAllPlays(game.players[0].hand, game.level);
+      const allPlays = GameEngine.findAllPlays(game.players[playerSeat].hand, game.level);
       if (allPlays.length > 0) {
         const smallest = allPlays.sort((a, b) => a.type.mainRankValue - b.type.mainRankValue)[0];
         showToast(`💡 建议出：${smallest.type.type} (${smallest.cards.length}张)`);
@@ -892,7 +892,7 @@
     const aiPlayer = game.players[aiIndex];
     if (!aiPlayer.isAI) return;
 
-    const myRemaining = game.players[0].hand.length;
+    const myRemaining = game.players[playerSeat].hand.length;
 
     // 判断当前是否领出
     let lastPlay = null;

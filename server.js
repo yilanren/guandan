@@ -206,9 +206,44 @@ io.on('connection', (socket) => {
       return;
     }
     room.started = true;
-    io.to(roomCode).emit('game_starting', { roomCode });
+
+    // 服务端统一生成牌堆、发牌
+    const totalSlots = room.totalSlots;
+    const firstSeat = Math.floor(Math.random() * totalSlots);
+    const decksNeeded = { two: 1, three: 2, four: 2 }[room.mode] || 1;
+    const cardsPerPlayer = 27;
+
+    let deck = [];
+    for (let i = 0; i < decksNeeded; i++) {
+      deck = deck.concat(CardEngine.createDeck(i));
+    }
+    deck = CardEngine.shuffle(deck);
+
+    const playerHands = [];
+    for (let i = 0; i < totalSlots; i++) {
+      playerHands.push(deck.slice(i * cardsPerPlayer, (i + 1) * cardsPerPlayer));
+    }
+    room.playerHands = playerHands;
+    room.gameState = { currentPlayerIndex: firstSeat, lastPlay: null, lastPlayPlayerIndex: firstSeat, phase: 'playing' };
+
+    // 发给每个玩家：自己的手牌 + 对手的手牌数
+    room.players.forEach((p, i) => {
+      const sock = io.sockets.sockets.get(p.id);
+      if (sock) {
+        sock.emit('match_found', {
+          roomCode, seat: i, firstSeat, level: '2',
+          myHand: playerHands[i],
+          opponents: room.players.filter((_, j) => j !== i).map((op, j) => ({
+            name: op.name, seat: op.seat, handSize: playerHands[op.seat].length,
+          })),
+          totalPlayers: totalSlots,
+          players: room.players,
+        });
+      }
+    });
+
     callback({ success: true });
-    console.log(`[游戏] 房间 ${roomCode} 开始游戏`);
+    console.log(`[游戏] 房间 ${roomCode} 开始游戏, 先手: P${firstSeat}`);
   });
 
   // 出牌 → 中继给房间其他人

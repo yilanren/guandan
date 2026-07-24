@@ -31,6 +31,13 @@
       <span class="icon">👥👥</span> 四人对局（经典）
     </button>
 
+    <button class="menu-btn" id="btn-create-room">
+      <span class="icon">🏠</span> 创建房间
+    </button>
+    <button class="menu-btn" id="btn-join-room">
+      <span class="icon">🔗</span> 加入房间
+    </button>
+
     <button class="menu-btn tutorial-btn" id="btn-tutorial">
       📖 新手教程
     </button>
@@ -56,6 +63,21 @@
     </div>
   </div>
 
+  <!-- ============ 3b. 加入房间弹窗 ============ -->
+  <div id="join-room-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <div class="modal-title">🔗 加入房间</div>
+      <p style="font-size:0.85em;opacity:0.7;margin-bottom:12px;">输入好友分享的6位房间号</p>
+      <input type="text" id="join-room-input" maxlength="6" placeholder="输入房间号（如ABC123）"
+        style="width:100%;padding:12px;font-size:1.2em;text-align:center;letter-spacing:4px;
+        border:2px solid var(--gold);border-radius:8px;background:rgba(0,0,0,0.3);color:var(--gold-light);
+        font-weight:700;text-transform:uppercase;"
+        autocomplete="off">
+      <button class="menu-btn" id="btn-confirm-join" style="margin-top:12px;">✅ 加入房间</button>
+      <button class="menu-btn tutorial-btn" id="btn-cancel-join" style="margin-top:4px;">← 返回</button>
+    </div>
+  </div>
+
   <!-- ============ 4. 房间等待 ============ -->
   <div id="room-screen" class="screen">
     <div class="menu-title" style="font-size:1.5em;">🏠 游戏房间</div>
@@ -67,6 +89,9 @@
     <div class="room-players" id="room-players-list"></div>
 
     <div class="room-waiting" id="room-waiting-text">等待玩家加入...</div>
+
+    <button class="menu-btn" id="btn-add-ai" style="font-size:0.8em;padding:8px 16px;">🤖 添加AI玩家</button>
+    <button class="menu-btn" id="btn-start-game" style="font-size:0.8em;padding:8px 16px;border-color:#4caf50;color:#4caf50;">▶ 开始游戏</button>
 
     <button class="menu-btn tutorial-btn" id="btn-leave-room" style="margin-top:8px;">← 取消匹配</button>
   </div>

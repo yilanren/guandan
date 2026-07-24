@@ -119,6 +119,15 @@
       $('#match-modal').style.display = 'none';
     });
 
+    // 创建房间
+    const btnCreateRoom = $('#btn-create-room');
+    if (btnCreateRoom) btnCreateRoom.addEventListener('click', () => {
+      // 默认四人模式（经典），弹出模式选择
+      currentMode = 'four';
+      teammateType = 'real';
+      createRoomAndWait();
+    });
+
     // 新手教程
     $('#btn-tutorial').addEventListener('click', () => {
       switchScreen('tutorial');
@@ -127,21 +136,25 @@
       switchScreen('menu');
     });
 
-    // 模式选择
-    $('#btn-ai-teammate').addEventListener('click', () => {
+    // 模式选择（旧版UI兼容，元素可能不存在）
+    const btnAiTeammate = $('#btn-ai-teammate');
+    if (btnAiTeammate) btnAiTeammate.addEventListener('click', () => {
       teammateType = 'ai';
       startGameWithAI();
     });
-    $('#btn-real-teammate').addEventListener('click', () => {
+    const btnRealTeammate = $('#btn-real-teammate');
+    if (btnRealTeammate) btnRealTeammate.addEventListener('click', () => {
       teammateType = 'real';
       startMultiplayerGame();
     });
-    $('#btn-mode-back').addEventListener('click', () => {
+    const btnModeBack = $('#btn-mode-back');
+    if (btnModeBack) btnModeBack.addEventListener('click', () => {
       switchScreen('menu');
     });
 
     // 色子
-    $('#btn-roll-dice').addEventListener('click', rollDice);
+    const btnRollDice = $('#btn-roll-dice');
+    if (btnRollDice) btnRollDice.addEventListener('click', rollDice);
 
     // 游戏操作
     $('#btn-play').addEventListener('click', playSelectedCardsAction);
@@ -156,10 +169,25 @@
     });
 
     // 房间
-    $('#btn-copy-code').addEventListener('click', copyRoomCode);
-    $('#btn-add-ai').addEventListener('click', addAIToRoom);
-    $('#btn-start-game').addEventListener('click', startRoomGame);
-    $('#btn-leave-room').addEventListener('click', leaveRoom);
+    const btnCopyCode = $('#btn-copy-code');
+    if (btnCopyCode) btnCopyCode.addEventListener('click', copyRoomCode);
+    const btnAddAi = $('#btn-add-ai');
+    if (btnAddAi) btnAddAi.addEventListener('click', addAIToRoom);
+    const btnStartGame = $('#btn-start-game');
+    if (btnStartGame) btnStartGame.addEventListener('click', startRoomGame);
+    const btnLeaveRoom = $('#btn-leave-room');
+    if (btnLeaveRoom) btnLeaveRoom.addEventListener('click', leaveRoom);
+
+    // 加入房间
+    const btnJoinRoom = $('#btn-join-room');
+    if (btnJoinRoom) btnJoinRoom.addEventListener('click', showJoinRoomModal);
+    const btnConfirmJoin = $('#btn-confirm-join');
+    if (btnConfirmJoin) btnConfirmJoin.addEventListener('click', confirmJoinRoom);
+    const btnCancelJoin = $('#btn-cancel-join');
+    if (btnCancelJoin) btnCancelJoin.addEventListener('click', () => {
+      $('#join-room-modal').style.display = 'none';
+    });
+
   }
 
   // === 单人模式 ===
@@ -246,12 +274,12 @@
     connectSocket();
   }
 
-  // === Socket.io 连接 ===
+  // === Socket.io 连接（匹配模式） ===
   function connectSocket() {
     socket = io();
 
     socket.on('connect', () => {
-      // 加入匹配队列（而不是创建房间）
+      // 加入匹配队列
       socket.emit('join_matchmaking', { mode: currentMode }, (res) => {
         if (res.success) {
           switchScreen('room');
@@ -265,110 +293,9 @@
       });
     });
 
-    // 匹配成功 → 使用服务端统一手牌
-    socket.on('match_found', (data) => {
-      roomCode = data.roomCode;
-      playerSeat = data.seat;
-      const firstSeat = data.firstSeat;
-      $('#room-code').textContent = roomCode;
-      $('#room-waiting-text').textContent = '✅ 匹配成功！';
-      renderRoomPlayers(data.players);
-
-      // 用服务端发的手牌构建游戏
-      const names = data.players.map(p => p.name);
-      const allHands = [];
-      allHands[playerSeat] = data.myHand; // 自己的手牌
-      data.opponents.forEach(o => { allHands[o.seat] = []; }); // 对手手牌未知
-
-      game = {
-        mode: currentMode,
-        totalPlayers: data.totalPlayers,
-        players: data.players.map((p, i) => ({
-          id: p.id,
-          name: p.name,
-          hand: i === playerSeat ? data.myHand : (allHands[i] || []),
-          isAI: false,
-          seat: i,
-          finished: false,
-          finishOrder: -1,
-        })),
-        currentPlayerIndex: firstSeat,
-        lastPlay: null,
-        lastPlayPlayerIndex: firstSeat,
-        passCount: 0,
-        roundNumber: 0,
-        level: data.level || '2',
-        phase: 'playing',
-        history: [],
-        finishedPlayers: [],
-        tributePhase: false,
-        tributes: [],
-      };
-
-      // 对手手牌只保留数量
-      data.opponents.forEach(o => {
-        game.players[o.seat].hand = new Array(o.handSize).fill({ suit: '?', rank: '?', id: '?', uid: '?' });
-      });
-
-      setTimeout(() => {
-        const isMyTurn = firstSeat === playerSeat;
-        showDiceResultForMultiplayer(isMyTurn, firstSeat);
-      }, 1500);
-    });
-
-    // 对手出牌了
-    socket.on('opponent_played', (data) => {
-      if (!game || game.phase === 'finished') return;
-      game.lastPlay = { playerIndex: data.seat, cards: data.cards, type: data.cardType };
-      game.lastPlayPlayerIndex = data.seat;
-      game.passCount = 0;
-      game.roundNumber++;
-      game.history.push({ round: game.roundNumber, playerIndex: data.seat, cards: data.cards, type: data.cardType });
-      // 减对手手牌数
-      const oppPlayer = game.players[data.seat];
-      if (oppPlayer && oppPlayer.hand) {
-        oppPlayer.hand = oppPlayer.hand.slice(data.cards.length);
-        if (oppPlayer.hand.length === 0) {
-          oppPlayer.finished = true;
-          oppPlayer.finishOrder = game.finishedPlayers.length + 1;
-          game.finishedPlayers.push(data.seat);
-          if (game.finishedPlayers.length >= game.totalPlayers - 1) game.phase = 'finished';
-        }
-      }
-      game.currentPlayerIndex = (data.seat + 1) % game.totalPlayers;
-      while (game.players[game.currentPlayerIndex] && game.players[game.currentPlayerIndex].finished) {
-        game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.totalPlayers;
-      }
-      resetTimer();
-      renderGame();
-    });
-
-    // 对手要不起
-    socket.on('opponent_passed', (data) => {
-      if (!game || game.phase === 'finished') return;
-      game.passCount++;
-      game.history.push({ round: game.roundNumber, playerIndex: data.seat, pass: true });
-      const activePlayers = game.players.filter(p => !p.finished);
-      const needed = activePlayers.length - 1;
-      if (game.passCount >= needed) {
-        game.lastPlay = null;
-        game.passCount = 0;
-        game.currentPlayerIndex = game.lastPlayPlayerIndex;
-      } else {
-        game.currentPlayerIndex = (data.seat + 1) % game.totalPlayers;
-        while (game.players[game.currentPlayerIndex] && game.players[game.currentPlayerIndex].finished) {
-          game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.totalPlayers;
-        }
-      }
-      resetTimer();
-      renderGame();
-    });
-
-    socket.on('disconnect', () => {
-      if (currentScreen === 'game' || currentScreen === 'room') {
-        showToast('连接断开');
-      }
-    });
+    // 复用多人游戏事件绑定
+    bindMultiplayerGameEvents();
+    bindDisconnectEvent();
   }
 
   function renderRoomPlayers(players) {
@@ -439,7 +366,212 @@
     switchScreen('menu');
   }
 
-  function startMultiplayerGameScreen(players) {
+  // === 创建房间并等待 ===
+  function createRoomAndWait() {
+    if (!currentMode) {
+      showToast('请先选择游戏模式');
+      return;
+    }
+    isMultiplayer = true;
+    socket = io();
+
+    socket.on('connect', () => {
+      const totalSlots = { two: 2, three: 3, four: 4 }[currentMode] || 4;
+      socket.emit('create_room', {
+        playerName: '玩家1',
+        mode: currentMode,
+        totalSlots: totalSlots,
+      }, (res) => {
+        if (res.success) {
+          roomCode = res.roomCode;
+          playerSeat = 0;
+          switchScreen('room');
+          $('#room-code').textContent = roomCode;
+          $('#room-waiting-text').textContent = '等待玩家加入... 还差 ' + (totalSlots - 1) + ' 人';
+          renderRoomPlayers(res.players);
+        } else {
+          showToast('创建房间失败');
+        }
+      });
+    });
+
+    socket.on('room_update', (data) => {
+      renderRoomPlayers(data.players);
+      const totalSlots = { two: 2, three: 3, four: 4 }[currentMode] || 4;
+      updateRoomWaitingText(data.players, totalSlots);
+    });
+
+    // 多人游戏事件由 bindMultiplayerGameEvents 统一处理（match_found 等）
+    bindMultiplayerGameEvents();
+    bindDisconnectEvent();
+  }
+
+  // === 加入房间 ===
+  function showJoinRoomModal() {
+    if (!currentMode) {
+      const modes = ['two', 'three', 'four'];
+      const modeNames = { two: '两人', three: '三人', four: '四人' };
+      // 默认两人模式
+      currentMode = 'two';
+    }
+    const modal = $('#join-room-modal');
+    if (modal) {
+      modal.style.display = 'flex';
+      // 聚焦输入框
+      setTimeout(() => {
+        const input = $('#join-room-input');
+        if (input) input.focus();
+      }, 100);
+    }
+  }
+
+  function confirmJoinRoom() {
+    const input = $('#join-room-input');
+    if (!input) return;
+    const code = input.value.trim().toUpperCase();
+    if (!code || code.length !== 6) {
+      showToast('请输入6位房间号');
+      return;
+    }
+
+    isMultiplayer = true;
+    socket = io();
+
+    socket.on('connect', () => {
+      socket.emit('join_room', {
+        roomCode: code,
+        playerName: '玩家' + (Math.floor(Math.random() * 1000)),
+      }, (res) => {
+        if (res.success) {
+          roomCode = code;
+          playerSeat = res.seat;
+          $('#join-room-modal').style.display = 'none';
+          switchScreen('room');
+          $('#room-code').textContent = roomCode;
+          renderRoomPlayers(res.players);
+          const totalSlots = { two: 2, three: 3, four: 4 }[currentMode] || 4;
+          updateRoomWaitingText(res.players, totalSlots);
+        } else {
+          showToast(res.error || '加入房间失败');
+        }
+      });
+    });
+
+    socket.on('room_update', (data) => {
+      renderRoomPlayers(data.players);
+      const totalSlots = { two: 2, three: 3, four: 4 }[currentMode] || 4;
+      updateRoomWaitingText(data.players, totalSlots);
+    });
+
+    bindMultiplayerGameEvents();
+    bindDisconnectEvent();
+  }
+
+  // === 复用多人游戏事件绑定 ===
+  function bindMultiplayerGameEvents() {
+    if (!socket) return;
+
+    socket.on('match_found', (data) => {
+      try {
+        roomCode = data.roomCode;
+        playerSeat = data.seat;
+        const firstSeat = data.firstSeat;
+        $('#room-code').textContent = roomCode;
+        $('#room-waiting-text').textContent = '✅ 匹配成功！';
+        renderRoomPlayers(data.players);
+
+        // 用 GameEngine.createGame 创建标准游戏对象（确保和单人模式结构一致！）
+        const names = data.players.map(p => p.name);
+        game = GameEngine.createGame({
+          mode: currentMode,
+          playerNames: names,
+          aiSlots: [],
+        });
+
+        // 用服务端统一手牌替换（确保所有玩家卡牌uid一致）
+        game.players.forEach((p, i) => {
+          p.id = data.players[i].id;   // 用socket id标识
+          p.isAI = false;
+          if (i === playerSeat) {
+            p.hand = data.myHand;       // 自己：服务端发的真实手牌
+          } else {
+            const opp = data.opponents.find(o => o.seat === i);
+            const sz = opp ? opp.handSize : 27;
+            p.hand = new Array(sz).fill(null).map(() => ({ suit: '?', rank: '?', id: '?', uid: '?' }));
+          }
+        });
+
+        // 设置先手
+        game.currentPlayerIndex = firstSeat;
+        game.lastPlayPlayerIndex = firstSeat;
+        game.level = data.level || '2';
+
+        setTimeout(() => {
+          const isMyTurn = firstSeat === playerSeat;
+          showDiceResultForMultiplayer(isMyTurn, firstSeat);
+        }, 1500);
+      } catch (e) {
+        showToast('匹配初始化失败: ' + e.message);
+        console.error('match_found error:', e);
+      }
+    });
+
+    socket.on('opponent_played', (data) => {
+      if (!game || game.phase === 'finished') return;
+      game.lastPlay = { playerIndex: data.seat, cards: data.cards, type: data.cardType };
+      game.lastPlayPlayerIndex = data.seat;
+      game.passCount = 0;
+      game.roundNumber++;
+      game.history.push({ round: game.roundNumber, playerIndex: data.seat, cards: data.cards, type: data.cardType });
+      const oppPlayer = game.players[data.seat];
+      if (oppPlayer && oppPlayer.hand) {
+        oppPlayer.hand = oppPlayer.hand.slice(data.cards.length);
+        if (oppPlayer.hand.length === 0) {
+          oppPlayer.finished = true;
+          oppPlayer.finishOrder = game.finishedPlayers.length + 1;
+          game.finishedPlayers.push(data.seat);
+          if (game.finishedPlayers.length >= game.totalPlayers - 1) game.phase = 'finished';
+        }
+      }
+      game.currentPlayerIndex = (data.seat + 1) % game.totalPlayers;
+      while (game.players[game.currentPlayerIndex] && game.players[game.currentPlayerIndex].finished) {
+        game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.totalPlayers;
+      }
+      resetTimer();
+      renderGame();
+    });
+
+    socket.on('opponent_passed', (data) => {
+      if (!game || game.phase === 'finished') return;
+      game.passCount++;
+      game.history.push({ round: game.roundNumber, playerIndex: data.seat, pass: true });
+      const activePlayers = game.players.filter(p => !p.finished);
+      const needed = activePlayers.length - 1;
+      if (game.passCount >= needed) {
+        game.lastPlay = null;
+        game.passCount = 0;
+        game.currentPlayerIndex = game.lastPlayPlayerIndex;
+      } else {
+        game.currentPlayerIndex = (data.seat + 1) % game.totalPlayers;
+        while (game.players[game.currentPlayerIndex] && game.players[game.currentPlayerIndex].finished) {
+          game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.totalPlayers;
+        }
+      }
+      resetTimer();
+      renderGame();
+    });
+  }
+
+  function bindDisconnectEvent() {
+    if (!socket) return;
+    socket.on('disconnect', () => {
+      if (currentScreen === 'game' || currentScreen === 'room') {
+        showToast('连接断开');
+      }
+    });
+  }
+
+  function startMultiplayerGameScreen() {
     // match_found 已经处理了游戏初始化，这里只是进界面
     startGameScreen();
     instantDeal();
@@ -459,19 +591,6 @@
       overlay.remove();
       startMultiplayerGameScreen();
     }, 2000);
-  }
-
-  function handleRemotePlay(data) {
-    // 远程玩家出牌
-    // TODO: 更新游戏状态
-    renderGame();
-  }
-
-  function handleRemotePass(data) {
-    // 远程玩家过牌
-    GameEngine.passTurn(game, data.seat);
-    GameEngine.nextTurn(game);
-    renderGame();
   }
 
   // === 开始游戏界面 ===

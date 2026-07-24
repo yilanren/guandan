@@ -14,8 +14,33 @@ const io = new Server(server, {
 // 静态文件服务
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 房间存储 { roomId: { players: [], gameState: {}, host: socketId } }
+// 房间存储 { roomId: { players: [], gameState: {}, host: socketId, mode, totalSlots } }
 const rooms = {};
+
+// 匹配队列：{ mode: [socketId1, socketId2, ...] }
+const matchQueues = { two: [], three: [], four: [] };
+
+function tryMatchPlayers(mode) {
+  const queue = matchQueues[mode];
+  const totalSlots = { two: 2, three: 3, four: 4 }[mode];
+  if (queue.length >= totalSlots) {
+    const matched = queue.splice(0, totalSlots);
+    const roomCode = generateRoomCode();
+    rooms[roomCode] = {
+      code: roomCode, mode, totalSlots, host: matched[0],
+      players: matched.map((sid, i) => ({ id: sid, name: `玩家${i + 1}`, seat: i, ready: true, isAI: false })),
+      gameState: null, started: false,
+    };
+    matched.forEach(sid => {
+      const sock = io.sockets.sockets.get(sid);
+      if (sock) sock.join(roomCode);
+    });
+    io.to(roomCode).emit('match_found', { roomCode, players: rooms[roomCode].players });
+    console.log(`[匹配] ${mode}人模式 匹配成功, 房间 ${roomCode}`);
+    return true;
+  }
+  return false;
+}
 
 // 生成6位房间号
 function generateRoomCode() {
@@ -53,6 +78,27 @@ io.on('connection', (socket) => {
     callback({ success: true, roomCode, players: rooms[roomCode].players });
     io.to(roomCode).emit('room_update', { players: rooms[roomCode].players });
     console.log(`[房间] ${roomCode} 创建, 模式: ${mode}, 人数: ${totalSlots}`);
+  });
+
+  // 加入匹配队列
+  socket.on('join_matchmaking', (data, callback) => {
+    const { mode } = data;
+    if (!matchQueues[mode]) { callback({ success: false, error: '无效模式' }); return; }
+    // 清理已在其他队列中的
+    Object.keys(matchQueues).forEach(k => {
+      matchQueues[k] = matchQueues[k].filter(id => id !== socket.id);
+    });
+    matchQueues[mode].push(socket.id);
+    callback({ success: true, queueLen: matchQueues[mode].length, needed: { two: 2, three: 3, four: 4 }[mode] });
+    console.log(`[匹配] ${socket.id} 加入${mode}人队列 (${matchQueues[mode].length}/${ {two:2,three:3,four:4}[mode]})`);
+    tryMatchPlayers(mode);
+  });
+
+  // 取消匹配
+  socket.on('cancel_matchmaking', () => {
+    Object.keys(matchQueues).forEach(k => {
+      matchQueues[k] = matchQueues[k].filter(id => id !== socket.id);
+    });
   });
 
   // 加入房间
@@ -163,6 +209,10 @@ io.on('connection', (socket) => {
   // 断线
   socket.on('disconnect', () => {
     console.log(`[断开] ${socket.id}`);
+    // 清理匹配队列
+    Object.keys(matchQueues).forEach(k => {
+      matchQueues[k] = matchQueues[k].filter(id => id !== socket.id);
+    });
     // 清理房间中的玩家
     for (const code of Object.keys(rooms)) {
       const room = rooms[code];

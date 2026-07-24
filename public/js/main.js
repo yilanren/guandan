@@ -93,28 +93,30 @@
       btn.addEventListener('click', function() {
         currentMode = this.dataset.mode;
         if (currentMode === 'single') {
-          // 单人模式，直接选AI队友并进入
           teammateType = 'ai';
           startSinglePlayerGame();
         } else {
-          // 多人模式，显示队友选择
-          showModeSelect();
+          // 多人模式，弹出匹配选择
+          const titles = { two: '两人对局', three: '三人对局', four: '四人对局' };
+          $('#match-modal-title').textContent = titles[currentMode] || currentMode;
+          $('#match-modal').style.display = 'flex';
         }
       });
     });
 
-    // 加入房间
-    $('#btn-join-room').addEventListener('click', () => {
-      switchScreen('join-room');
-      $('#join-error').textContent = '';
-      $('#join-room-input').value = '';
-      $('#join-room-input').focus();
+    // 匹配弹窗
+    $('#btn-match-real').addEventListener('click', () => {
+      $('#match-modal').style.display = 'none';
+      teammateType = 'real';
+      startMultiplayerGame();
     });
-    $('#btn-confirm-join').addEventListener('click', joinRoomByCode);
-    $('#btn-join-back').addEventListener('click', () => switchScreen('menu'));
-    // 回车也可加入
-    $('#join-room-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') joinRoomByCode();
+    $('#btn-match-ai').addEventListener('click', () => {
+      $('#match-modal').style.display = 'none';
+      teammateType = 'ai';
+      startGameWithAI();
+    });
+    $('#btn-match-cancel').addEventListener('click', () => {
+      $('#match-modal').style.display = 'none';
     });
 
     // 新手教程
@@ -158,17 +160,6 @@
     $('#btn-add-ai').addEventListener('click', addAIToRoom);
     $('#btn-start-game').addEventListener('click', startRoomGame);
     $('#btn-leave-room').addEventListener('click', leaveRoom);
-  }
-
-  // === 模式选择 ===
-  function showModeSelect() {
-    switchScreen('mode-select');
-    const titles = {
-      two: '两人对局',
-      three: '三人对局',
-      four: '四人对局（经典掼蛋）',
-    };
-    $('#mode-select-title').textContent = titles[currentMode] || currentMode;
   }
 
   // === 单人模式 ===
@@ -255,44 +246,46 @@
     connectSocket();
   }
 
-  // === 通过房间号加入 ===
-  function joinRoomByCode() {
-    const code = $('#join-room-input').value.trim().toUpperCase();
-    if (code.length < 4) {
-      $('#join-error').textContent = '请输入有效的房间号';
-      return;
-    }
-    $('#join-error').textContent = '正在连接...';
-    isMultiplayer = true;
-    roomCode = code;
-    currentMode = null; // 由房主决定模式
-    connectSocketForJoin(code);
-  }
-
-  function connectSocketForJoin(code) {
+  // === Socket.io 连接 ===
+  function connectSocket() {
     socket = io();
 
     socket.on('connect', () => {
-      socket.emit('join_room', { roomCode: code, playerName: '玩家' }, (res) => {
+      // 加入匹配队列（而不是创建房间）
+      socket.emit('join_matchmaking', { mode: currentMode }, (res) => {
         if (res.success) {
-          roomCode = res.roomCode;
-          playerSeat = res.seat;
           switchScreen('room');
-          renderRoomPlayers(res.players);
-          updateRoomWaitingText(res.players, res.players.length + 1); // rough estimate
-          $('#room-code').textContent = roomCode;
-        } else {
-          $('#join-error').textContent = res.error || '加入失败';
-          socket.disconnect();
-          socket = null;
-          isMultiplayer = false;
+          const totalSlots = { two: 2, three: 3, four: 4 }[currentMode];
+          $('#room-code').textContent = '匹配中...';
+          $('#room-waiting-text').textContent =
+            `正在匹配 ${res.queueLen}/${res.needed} 人...`;
+          $('#room-players-list').innerHTML =
+            `<div style="text-align:center;color:var(--gold-light);">已就位: ${res.queueLen} / ${res.needed}</div>`;
         }
       });
     });
 
+    // 匹配成功
+    socket.on('match_found', (data) => {
+      roomCode = data.roomCode;
+      playerSeat = data.players.findIndex(p => p.id === socket.id);
+      $('#room-code').textContent = roomCode;
+      $('#room-waiting-text').textContent = '✅ 匹配成功！即将开始...';
+      renderRoomPlayers(data.players);
+
+      // 1.5秒后摇色子进游戏
+      setTimeout(() => {
+        // 摇色子定先手
+        const diceResult = Math.random() < 0.5 ? 'blue' : 'red';
+        if (diceResult === 'blue') {
+          playerFirst = true;
+        }
+        startMultiplayerGameScreen(data.players);
+      }, 1500);
+    });
+
     socket.on('room_update', (data) => {
       renderRoomPlayers(data.players);
-      updateRoomWaitingText(data.players, data.players.length + 1);
     });
 
     socket.on('game_starting', () => {
@@ -301,60 +294,10 @@
 
     socket.on('cards_played', (data) => handleRemotePlay(data));
     socket.on('player_passed', (data) => handleRemotePass(data));
+
     socket.on('disconnect', () => {
       if (currentScreen === 'game' || currentScreen === 'room') {
         showToast('连接断开');
-      }
-    });
-  }
-
-  // === Socket.io 连接 ===
-  function connectSocket() {
-    socket = io();
-
-    socket.on('connect', () => {
-      const totalSlots = { two: 2, three: 3, four: 4 }[currentMode] || 4;
-      socket.emit('create_room', {
-        playerName: '你',
-        mode: currentMode,
-        totalSlots,
-      }, (res) => {
-        if (res.success) {
-          roomCode = res.roomCode;
-          switchScreen('room');
-          renderRoomPlayers(res.players);
-          $('#room-code').textContent = roomCode;
-          updateRoomWaitingText(res.players, totalSlots);
-        }
-      });
-    });
-
-    socket.on('room_update', (data) => {
-      renderRoomPlayers(data.players);
-      const totalSlots = { two: 2, three: 3, four: 4 }[currentMode] || 4;
-      updateRoomWaitingText(data.players, totalSlots);
-    });
-
-    socket.on('game_starting', (data) => {
-      // 开始多人游戏
-      startMultiplayerGameScreen();
-    });
-
-    socket.on('cards_played', (data) => {
-      handleRemotePlay(data);
-    });
-
-    socket.on('player_passed', (data) => {
-      handleRemotePass(data);
-    });
-
-    socket.on('emoji_received', (data) => {
-      showEmoji(data);
-    });
-
-    socket.on('disconnect', () => {
-      if (currentScreen === 'game' || currentScreen === 'room') {
-        showToast('连接断开，请检查网络');
       }
     });
   }
@@ -419,6 +362,7 @@
 
   function leaveRoom() {
     if (socket) {
+      socket.emit('cancel_matchmaking');
       socket.disconnect();
       socket = null;
     }
@@ -426,19 +370,16 @@
     switchScreen('menu');
   }
 
-  function startMultiplayerGameScreen() {
-    // 多人模式初始化
-    const totalSlots = { two: 2, three: 3, four: 4 }[currentMode] || 4;
-    const names = [];
-    const aiSlots = [];
-    // 简化：本地玩家是seat 0
-    // TODO: 从服务器同步真实配置
+  function startMultiplayerGameScreen(players) {
+    const names = (players || []).map(p => p.name);
     game = GameEngine.createGame({
       mode: currentMode,
-      playerNames: names,
+      playerNames: names.length > 0 ? names : ['你'],
       aiSlots: [],
     });
     playerSeat = 0;
+    game.currentPlayerIndex = Math.floor(Math.random() * game.totalPlayers);
+    game.lastPlayPlayerIndex = game.currentPlayerIndex;
     startGameScreen();
     instantDeal();
   }

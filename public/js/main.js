@@ -491,10 +491,7 @@
       }, 1500);
     }
 
-    // 如果是AI回合，触发AI
-    if (isCurrentPlayerAI()) {
-      setTimeout(() => aiTakeTurn(), 1500);
-    }
+    // AI回合由 renderGame() 统一触发，不在此重复调度
   }
 
   // === 级牌展示动画（纯CSS牌） ===
@@ -542,7 +539,7 @@
     }
 
     // 检查是否该当前玩家出牌
-    if (game.currentPlayerIndex !== 0 && isCurrentPlayerAI() && !dealingInProgress) {
+    if (game.currentPlayerIndex !== playerSeat && isCurrentPlayerAI() && !dealingInProgress) {
       setTimeout(() => aiTakeTurn(), 800);
     }
   }
@@ -599,7 +596,7 @@
     if (game.lastPlay && game.lastPlay.cards) {
       const lp = game.lastPlay;
       const p = game.players[lp.playerIndex];
-      const isMe = lp.playerIndex === 0;
+      const isMe = lp.playerIndex === playerSeat;
       const tagClass = isMe ? 'me' : 'ai';
       const cardsDivs = lp.cards.map(c => {
         const isRed = c.suit === 'H' || c.suit === 'D' || c.suit === 'Joker';
@@ -670,8 +667,8 @@
     const container = $('#my-hand-cards');
     if (!container) return;
     container.innerHTML = '';
-    // 从小到大排列
-    const sorted = [...game.players[playerSeat].hand].sort((a, b) => CE.compareCards(a, b, game.level));
+    // 从大到小排列（左大右小，符合持牌习惯）
+    const sorted = [...game.players[playerSeat].hand].sort((a, b) => CE.compareCards(b, a, game.level));
     for (const card of sorted) {
       const el = createCardElement(card);
       if (selectedCards.find(c => c.uid === card.uid)) el.classList.add('selected');
@@ -886,10 +883,10 @@
 
   // === 提示 ===
   function showHint() {
-    if (game.currentPlayerIndex !== 0) return;
+    if (game.currentPlayerIndex !== playerSeat) return;
 
     // 找到能打的牌
-    if (game.lastPlay && game.lastPlayPlayerIndex !== 0) {
+    if (game.lastPlay && game.lastPlayPlayerIndex !== playerSeat) {
       const beating = GameEngine.findBeatingPlays(game.players[playerSeat].hand, game.lastPlay.type, game.level);
       if (beating.length > 0) {
         // 选最小的能压过的牌
@@ -968,7 +965,7 @@
 
     const results = GameEngine.getResults(game);
     const head = results.head;
-    const isWin = head === 0; // 玩家是否是头游
+    const isWin = head === playerSeat; // 玩家是否是头游
 
     $('#result-title').textContent = isWin ? '🎉 恭喜获胜！' : '😞 再接再厉';
     $('#result-title').style.color = isWin ? 'var(--gold)' : '#ccc';

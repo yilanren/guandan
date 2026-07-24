@@ -355,29 +355,93 @@ function checkTriplePair(cards, level) {
   return null;
 }
 
-// 三带二（5张）
+// 三带二（5张）—— 完整支持万能牌
 function checkTriplePair5(cards, level) {
-  const wildCount = cards.filter(c => isWildCard(c, level)).length;
-  const counts = countRanks(cards.filter(c => !isWildCard(c, level)), level);
+  const wildCards = cards.filter(c => isWildCard(c, level));
+  const normals = cards.filter(c => !isWildCard(c, level));
+  const wildCount = wildCards.length;
 
+  // 无万能牌：直接检查 3+2 结构
   if (wildCount === 0) {
+    const counts = countRanks(normals, level);
     const values = Object.values(counts).sort((a, b) => b - a);
     if (values.length === 2 && values[0] === 3 && values[1] === 2) {
       const tripleRank = Object.entries(counts).find(([, c]) => c === 3)[0];
       return { type: 'triple_pair', weight: 4, mainRank: tripleRank, mainRankValue: RANK_VALUE[tripleRank], subtype: 'triple_pair_5' };
     }
+    return null;
   }
-  // 带万能牌的三带二
-  if (wildCount === 1) {
-    const values = Object.values(counts).sort((a, b) => b - a);
-    // 万能牌补成三同张，另一个是对子
-    if (values.length === 2 && values[0] === 2 && values[1] === 2) {
-      // 两个对子 + 万能牌 = 三带二
-      const pairs = Object.entries(counts).filter(([, c]) => c === 2).map(([r]) => r);
-      const higherPair = pairs.sort((a, b) => RANK_VALUE[b] - RANK_VALUE[a])[0];
-      return { type: 'triple_pair', weight: 4, mainRank: higherPair, mainRankValue: RANK_VALUE[higherPair], subtype: 'triple_pair_5' };
+
+  // 带万能牌：尝试所有可能的分配
+  // 万能牌可当作任意非王牌使用，目标是形成 3+2 结构
+  // 即：一个rank有3张，另一个rank有2张（或万能牌自己组成对子）
+  const counts = countRanks(normals, level);
+  const entries = Object.entries(counts);
+  const totalCards = cards.length; // always 5
+
+  // 尝试每种可能的"三同张"rank分配
+  for (let t = 0; t < entries.length; t++) {
+    const tripleRank = entries[t][0];
+    const tripleNeed = Math.max(0, 3 - entries[t][1]);
+    if (tripleNeed > wildCount) continue;
+
+    const remainingWilds = wildCount - tripleNeed;
+
+    // 尝试剩余的rank作为"对子"
+    for (let p = 0; p < entries.length; p++) {
+      if (p === t) continue;
+      const pairRank = entries[p][0];
+      const pairNeed = Math.max(0, 2 - entries[p][1]);
+      if (pairNeed > remainingWilds) continue;
+      if (tripleNeed + pairNeed !== wildCount) continue;
+
+      // 检查是否有其他rank的牌未被使用
+      const used = new Set([t, p]);
+      const unused = entries.filter((_, i) => !used.has(i)).filter(([, c]) => c > 0);
+      if (unused.length > 0) continue;
+
+      return {
+        type: 'triple_pair', weight: 4,
+        mainRank: tripleRank,
+        mainRankValue: RANK_VALUE[tripleRank],
+        subtype: 'triple_pair_5'
+      };
+    }
+
+    // 剩余万能牌自己配成对子（需要至少2张万能牌）
+    if (remainingWilds >= 2 && tripleNeed + 2 === wildCount) {
+      // 检查是否只有tripleRank有牌
+      const others = entries.filter((_, i) => i !== t).filter(([, c]) => c > 0);
+      if (others.length === 0) {
+        return {
+          type: 'triple_pair', weight: 4,
+          mainRank: tripleRank,
+          mainRankValue: RANK_VALUE[tripleRank],
+          subtype: 'triple_pair_5'
+        };
+      }
     }
   }
+
+  // 万能牌自己形成三同张 + 一个对子
+  if (wildCount >= 3 && entries.filter(([, c]) => c > 0).length <= 1) {
+    // 3张万能牌做三同张，剩余万能牌（如果有）+ 普通牌做对子
+    const normalEntries = entries.filter(([, c]) => c > 0);
+    if (normalEntries.length <= 1) {
+      const pairRank = normalEntries.length === 1 ? normalEntries[0][0] : wildCards[0].rank;
+      const pairNeed = normalEntries.length === 1 ? Math.max(0, 2 - normalEntries[0][1]) : 2;
+      const wildsForTriple = 3;
+      if (wildsForTriple + pairNeed === wildCount) {
+        return {
+          type: 'triple_pair', weight: 4,
+          mainRank: normalEntries.length === 1 ? normalEntries[0][0] : 'A',
+          mainRankValue: RANK_VALUE[normalEntries.length === 1 ? normalEntries[0][0] : 'A'],
+          subtype: 'triple_pair_5'
+        };
+      }
+    }
+  }
+
   return null;
 }
 
@@ -391,14 +455,17 @@ function compareCardTypes(typeA, typeB) {
   // 普通牌型 vs 炸弹
   if (typeA.weight >= 100 && typeB.weight < 100) return 1;
   if (typeA.weight < 100 && typeB.weight >= 100) return -1;
-  // 同类型比较
+  // 同类型比较：类型相同则直接比大小
   if (typeA.type !== typeB.type) {
     // 子类型也要相同
     const ta = typeA.subtype || typeA.type;
     const tb = typeB.subtype || typeB.type;
     if (ta !== tb) return null; // 不能互相压
   }
-  return typeA.mainRankValue - typeB.mainRankValue;
+  // 相同牌型比较牌点
+  const diff = typeA.mainRankValue - typeB.mainRankValue;
+  // 同点数不能压（比如两个都是对3，后出的不能压先出的）
+  return diff;
 }
 
 // 在手中找到所有可能的出牌组合（优化版：按rank分组避免组合爆炸）

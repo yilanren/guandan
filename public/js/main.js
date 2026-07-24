@@ -670,7 +670,9 @@
     const container = $('#my-hand-cards');
     if (!container) return;
     container.innerHTML = '';
-    for (const card of game.players[playerSeat].hand) {
+    // 从小到大排列
+    const sorted = [...game.players[playerSeat].hand].sort((a, b) => CE.compareCards(a, b, game.level));
+    for (const card of sorted) {
       const el = createCardElement(card);
       if (selectedCards.find(c => c.uid === card.uid)) el.classList.add('selected');
       container.appendChild(el);

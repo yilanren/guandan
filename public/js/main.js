@@ -25,6 +25,10 @@
   const CE = window.CardEngine;
   let dealingInProgress = false;
 
+  // === 跨局持久状态（等级追踪） ===
+  let playerLevels = ['2', '2', '2', '2']; // 每个玩家的当前等级
+  let dealerSeat = 0; // 当前坐庄的玩家
+
   // === 初始化 ===
   function init() {
     bindMenuEvents();
@@ -193,6 +197,7 @@
   // === 单人模式 ===
   function startSinglePlayerGame() {
     isMultiplayer = false;
+    playerLevels = ['2', '2', '2', '2']; // 重置等级
     game = GameEngine.createGame({
       mode: 'single',
       playerNames: ['你', 'AI对手'],
@@ -224,6 +229,7 @@
         playerSeat = 0;
         game.currentPlayerIndex = 0;
         game.lastPlayPlayerIndex = 0;
+        dealerSeat = 0;
       } else {
         diceEl.textContent = '🔴';
         resultEl.textContent = '🔴 红色！对方先手';
@@ -231,6 +237,7 @@
         playerSeat = 0;
         game.currentPlayerIndex = 1;
         game.lastPlayPlayerIndex = 1;
+        dealerSeat = 1;
       }
       resultEl.style.display = 'block';
 
@@ -259,10 +266,14 @@
       aiSlots,
     });
 
-    // 随机先手
+    // 随机先手，先手即庄家
     game.currentPlayerIndex = Math.floor(Math.random() * totalPlayers);
     game.lastPlayPlayerIndex = game.currentPlayerIndex;
+    dealerSeat = game.currentPlayerIndex;
     playerSeat = 0;
+    // 重置等级
+    playerLevels = ['2', '2', '2', '2'];
+    game.level = playerLevels[dealerSeat];
 
     startGameScreen();
     instantDeal();
@@ -501,10 +512,12 @@
           }
         });
 
-        // 设置先手
+        // 设置先手，先手即庄家
         game.currentPlayerIndex = firstSeat;
         game.lastPlayPlayerIndex = firstSeat;
-        game.level = data.level || '2';
+        dealerSeat = firstSeat;
+        playerLevels = ['2', '2', '2', '2'];
+        game.level = playerLevels[dealerSeat];
 
         setTimeout(() => {
           const isMyTurn = firstSeat === playerSeat;
@@ -1096,37 +1109,70 @@
 
     const results = GameEngine.getResults(game);
     const head = results.head;
-    const isWin = head === playerSeat; // 玩家是否是头游
 
-    $('#result-title').textContent = isWin ? '🎉 恭喜获胜！' : '😞 再接再厉';
-    $('#result-title').style.color = isWin ? 'var(--gold)' : '#ccc';
+    // 判断坐庄方是否赢了
+    const dealerWon = game.mode === 'four'
+      ? (head === dealerSeat || head === (dealerSeat + 2) % 4)
+      : head === dealerSeat;
 
-    // 升级计算
+    // 玩家自己是否头游（或队友头游）
+    const iAmHead = game.mode === 'four'
+      ? (head === playerSeat || (head + 2) % 4 === playerSeat)
+      : head === playerSeat;
+
+    $('#result-title').textContent = iAmHead ? '🎉 恭喜获胜！' : '😞 再接再厉';
+    $('#result-title').style.color = iAmHead ? 'var(--gold)' : '#ccc';
+
+    // 升级计算：坐庄方赢→晋级，输→换庄
     let levelInfo = '';
-    if (game.mode === 'four') {
-      const upgrade = GameEngine.calculateUpgrade(game);
-      const lvlResult = GameEngine.levelUp(game, upgrade);
-      levelInfo = `⬆ 升 ${upgrade} 级 → 当前级牌: ${lvlResult.newLevel}`;
-      if (lvlResult.passedA) levelInfo += ' 🏆 恭喜过A！';
+    if (dealerWon) {
+      // 庄家赢：晋级
+      if (game.mode === 'four') {
+        const upgrade = GameEngine.calculateUpgrade(game);
+        const currentIdx = GameEngine.LEVEL_SEQUENCE.indexOf(playerLevels[dealerSeat]);
+        const newIdx = Math.min(currentIdx + upgrade, GameEngine.LEVEL_SEQUENCE.length - 1);
+        playerLevels[dealerSeat] = GameEngine.LEVEL_SEQUENCE[newIdx];
+        playerLevels[(dealerSeat + 2) % 4] = playerLevels[dealerSeat];
+        levelInfo = '⬆ 升 ' + upgrade + ' 级 → 庄家级牌: ' + playerLevels[dealerSeat];
+        if (playerLevels[dealerSeat] === 'A') levelInfo += ' 🏆 恭喜过A！';
+      } else {
+        const currentIdx = GameEngine.LEVEL_SEQUENCE.indexOf(playerLevels[dealerSeat]);
+        playerLevels[dealerSeat] = GameEngine.LEVEL_SEQUENCE[
+          Math.min(currentIdx + 1, GameEngine.LEVEL_SEQUENCE.length - 1)
+        ];
+        levelInfo = '⬆ 庄家升至 ' + playerLevels[dealerSeat];
+      }
+      // 庄家不变，继续坐庄
     } else {
-      game.level = GameEngine.LEVEL_SEQUENCE[
-        Math.min(GameEngine.LEVEL_SEQUENCE.indexOf(game.level) + 1, GameEngine.LEVEL_SEQUENCE.length - 1)
-      ];
-      levelInfo = `⬆ 升至 ${game.level}`;
+      // 庄家输：头游成为新庄家
+      const newDealer = head;
+      dealerSeat = newDealer;
+      levelInfo = '🔄 换庄！新庄家: ' + game.players[newDealer].name + '（级牌: ' + playerLevels[newDealer] + '）';
     }
+
+    game.level = playerLevels[dealerSeat];
     $('#result-level-up').textContent = levelInfo;
 
-    // 排名列表
+    // 排名列表（根据模式显示不同名称）
     const order = game.finishedPlayers;
-    const rankNames = ['头游🥇', '二游🥈', '三游🥉', '末游'];
-    const rankClasses = ['head', 'second', 'third', 'tail'];
+    let rankNames, rankClasses;
+    if (game.mode === 'single' || game.mode === 'two') {
+      rankNames = ['头游🥇', '末游'];
+      rankClasses = ['head', 'tail'];
+    } else if (game.mode === 'three') {
+      rankNames = ['头游🥇', '二游🥈', '末游'];
+      rankClasses = ['head', 'second', 'tail'];
+    } else {
+      rankNames = ['头游🥇', '二游🥈', '三游🥉', '末游'];
+      rankClasses = ['head', 'second', 'third', 'tail'];
+    }
     let html = '';
     for (let i = 0; i < order.length; i++) {
       const p = game.players[order[i]];
-      html += `<div class="result-player ${rankClasses[i]}">
-        <span>${rankNames[i]}</span>
-        <span>${p.name}</span>
-      </div>`;
+      html += '<div class="result-player ' + (rankClasses[i] || 'tail') + '">' +
+        '<span>' + rankNames[i] + '</span>' +
+        '<span>' + p.name + '</span>' +
+        '</div>';
     }
     $('#result-players-list').innerHTML = html;
 
@@ -1155,7 +1201,8 @@
   // === 下一局 ===
   function startNextGame() {
     const currentMode = game.mode;
-    const nextLevel = game.level; // showResults已更新过级牌，直接使用
+    // 使用当前庄家的等级
+    const nextLevel = playerLevels[dealerSeat];
 
     // 保存旧游戏结果（进贡需要）
     const oldResults = GameEngine.getResults(game);
@@ -1171,22 +1218,20 @@
     });
     game.level = nextLevel;
 
-    // 执行进贡（在新手牌上进行）
+    // 进贡逻辑
     if (tributes.length > 0 && !resisted) {
-      // 重新计算进贡（因为手牌变了）
       const newTributes = GameEngine.calculateTribute(game);
       if (newTributes.length > 0) {
         GameEngine.executeTribute(game, newTributes);
-        // 确定先手
         const firstPlayer = GameEngine.getTributeFirstPlayer(game, newTributes, false);
         game.currentPlayerIndex = firstPlayer;
         game.lastPlayPlayerIndex = firstPlayer;
+        dealerSeat = firstPlayer;
       }
     } else {
-      // 抗贡或无进贡：头游先出
-      const firstPlayer = resisted ? oldResults.head : 0;
-      game.currentPlayerIndex = firstPlayer;
-      game.lastPlayPlayerIndex = firstPlayer;
+      // 庄家先出
+      game.currentPlayerIndex = dealerSeat;
+      game.lastPlayPlayerIndex = dealerSeat;
     }
 
     startGameScreen();

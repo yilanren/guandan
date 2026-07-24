@@ -699,6 +699,7 @@
 
   // === 出牌 ===
   function playSelectedCardsAction() {
+    console.log('[出牌] playerSeat:', playerSeat, 'currentPlayerIndex:', game && game.currentPlayerIndex, 'selectedCards:', selectedCards.length, 'isMultiplayer:', isMultiplayer);
     if (selectedCards.length === 0) {
       showToast('请先选择要出的牌（点击手牌）');
       return;
@@ -777,6 +778,7 @@
   function updateActionButtons() {
     const playBtn = $('#btn-play');
     const passBtn = $('#btn-pass');
+    console.log('[按钮] currentPlayerIndex:', game.currentPlayerIndex, 'playerSeat:', playerSeat, 'lastPlay:', !!game.lastPlay, 'lastPlayPlayerIndex:', game.lastPlayPlayerIndex);
 
     if (game.phase === 'finished') {
       playBtn.disabled = true;
@@ -1093,6 +1095,19 @@
   function showEmoji(data) {
     showToast(`${data.emoji}`);
   }
+
+  // === 错误捕获（调试用） ===
+  window.addEventListener('error', function(e) {
+    const msg = `JS错误: ${e.message} @ ${e.filename}:${e.lineno}`;
+    console.error(msg, e.error);
+    const toast = document.createElement('div');
+    toast.className = 'tutorial-toast';
+    toast.textContent = msg;
+    toast.style.color = '#e74c3c';
+    toast.style.borderColor = '#e74c3c';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 5000);
+  });
 
   // === 启动 ===
   init();

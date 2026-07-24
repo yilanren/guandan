@@ -268,32 +268,77 @@
     // 匹配成功
     socket.on('match_found', (data) => {
       roomCode = data.roomCode;
-      playerSeat = data.players.findIndex(p => p.id === socket.id);
+      playerSeat = data.seat;
+      const firstSeat = data.firstSeat;
       $('#room-code').textContent = roomCode;
-      $('#room-waiting-text').textContent = '✅ 匹配成功！即将开始...';
+      $('#room-waiting-text').textContent = '✅ 匹配成功！';
       renderRoomPlayers(data.players);
 
-      // 1.5秒后摇色子进游戏
+      // 初始化游戏
+      const names = data.players.map(p => p.name);
+      game = GameEngine.createGame({
+        mode: currentMode,
+        playerNames: names,
+        aiSlots: [], // 全真人，无AI
+      });
+      game.currentPlayerIndex = firstSeat;
+      game.lastPlayPlayerIndex = firstSeat;
+
+      // 1.5秒后显示谁先手
       setTimeout(() => {
-        // 摇色子定先手
-        const diceResult = Math.random() < 0.5 ? 'blue' : 'red';
-        if (diceResult === 'blue') {
-          playerFirst = true;
-        }
-        startMultiplayerGameScreen(data.players);
+        const isMyTurn = firstSeat === playerSeat;
+        showDiceResultForMultiplayer(isMyTurn, firstSeat);
       }, 1500);
     });
 
-    socket.on('room_update', (data) => {
-      renderRoomPlayers(data.players);
+    // 对手出牌了
+    socket.on('opponent_played', (data) => {
+      if (!game || game.phase === 'finished') return;
+      // 更新游戏状态
+      game.lastPlay = { playerIndex: data.seat, cards: data.cards, type: data.cardType };
+      game.lastPlayPlayerIndex = data.seat;
+      game.passCount = 0;
+      game.roundNumber++;
+      game.history.push({ round: game.roundNumber, playerIndex: data.seat, cards: data.cards, type: data.cardType });
+      // 从对手手牌移除（如果在本地有记录的话）
+      const oppPlayer = game.players[data.seat];
+      if (oppPlayer && oppPlayer.hand) {
+        oppPlayer.hand = oppPlayer.hand.filter(c => !data.cards.find(dc => dc.uid === c.uid));
+        if (oppPlayer.hand.length === 0) {
+          oppPlayer.finished = true;
+          oppPlayer.finishOrder = game.finishedPlayers.length + 1;
+          game.finishedPlayers.push(data.seat);
+        }
+      }
+      game.currentPlayerIndex = (data.seat + 1) % game.totalPlayers;
+      // 跳过已完成的玩家
+      while (game.players[game.currentPlayerIndex] && game.players[game.currentPlayerIndex].finished) {
+        game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.totalPlayers;
+      }
+      resetTimer();
+      renderGame();
     });
 
-    socket.on('game_starting', () => {
-      startMultiplayerGameScreen();
+    // 对手要不起
+    socket.on('opponent_passed', (data) => {
+      if (!game || game.phase === 'finished') return;
+      game.passCount++;
+      game.history.push({ round: game.roundNumber, playerIndex: data.seat, pass: true });
+      const activePlayers = game.players.filter(p => !p.finished);
+      const needed = activePlayers.length - 1;
+      if (game.passCount >= needed) {
+        game.lastPlay = null;
+        game.passCount = 0;
+        game.currentPlayerIndex = game.lastPlayPlayerIndex;
+      } else {
+        game.currentPlayerIndex = (data.seat + 1) % game.totalPlayers;
+        while (game.players[game.currentPlayerIndex] && game.players[game.currentPlayerIndex].finished) {
+          game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.totalPlayers;
+        }
+      }
+      resetTimer();
+      renderGame();
     });
-
-    socket.on('cards_played', (data) => handleRemotePlay(data));
-    socket.on('player_passed', (data) => handleRemotePass(data));
 
     socket.on('disconnect', () => {
       if (currentScreen === 'game' || currentScreen === 'room') {
@@ -371,17 +416,25 @@
   }
 
   function startMultiplayerGameScreen(players) {
-    const names = (players || []).map(p => p.name);
-    game = GameEngine.createGame({
-      mode: currentMode,
-      playerNames: names.length > 0 ? names : ['你'],
-      aiSlots: [],
-    });
-    playerSeat = 0;
-    game.currentPlayerIndex = Math.floor(Math.random() * game.totalPlayers);
-    game.lastPlayPlayerIndex = game.currentPlayerIndex;
+    // match_found 已经处理了游戏初始化，这里只是进界面
     startGameScreen();
     instantDeal();
+  }
+
+  function showDiceResultForMultiplayer(isMyTurn, firstSeat) {
+    const overlay = document.createElement('div');
+    overlay.className = 'level-up-overlay';
+    overlay.innerHTML = `
+      <div style="font-size:4em;">🎲</div>
+      <div style="font-size:1.5em;color:var(--gold);margin-top:12px;font-weight:900;">
+        ${isMyTurn ? '🔵 你先手！' : '🔴 对方先手'}
+      </div>
+      <div style="color:var(--gold-light);margin-top:8px;">玩家${firstSeat + 1} 先出牌</div>`;
+    document.body.appendChild(overlay);
+    setTimeout(() => {
+      overlay.remove();
+      startMultiplayerGameScreen();
+    }, 2000);
   }
 
   function handleRemotePlay(data) {
@@ -648,10 +701,11 @@
     selectedCards = [];
     $$('#my-hand-cards .poker-card.selected').forEach(el => el.classList.remove('selected'));
 
-    // 如果联网，同步到服务器
-    if (isMultiplayer && socket) {
+    // 多人模式：发送给服务器中继
+    if (isMultiplayer && socket && roomCode) {
       socket.emit('play_cards', {
         roomCode,
+        playerSeat,
         cards: playedCards,
         cardType: playedType,
       });
@@ -680,8 +734,8 @@
     selectedCards = [];
     $$('#my-hand-cards .poker-card.selected').forEach(el => el.classList.remove('selected'));
 
-    if (isMultiplayer && socket) {
-      socket.emit('pass_turn', { roomCode });
+    if (isMultiplayer && socket && roomCode) {
+      socket.emit('pass_turn', { roomCode, playerSeat });
     }
 
     // 新回合：领出者已经在 passTurn 中设好了，不要再 nextTurn

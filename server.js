@@ -26,17 +26,31 @@ function tryMatchPlayers(mode) {
   if (queue.length >= totalSlots) {
     const matched = queue.splice(0, totalSlots);
     const roomCode = generateRoomCode();
+    // 随机先手
+    const firstSeat = Math.floor(Math.random() * totalSlots);
     rooms[roomCode] = {
       code: roomCode, mode, totalSlots, host: matched[0],
-      players: matched.map((sid, i) => ({ id: sid, name: `玩家${i + 1}`, seat: i, ready: true, isAI: false })),
-      gameState: null, started: false,
+      players: matched.map((sid, i) => ({
+        id: sid, name: `玩家${i + 1}`, seat: i, ready: true, isAI: false
+      })),
+      gameState: { currentPlayerIndex: firstSeat, lastPlay: null, lastPlayPlayerIndex: firstSeat, phase: 'playing' },
+      started: false,
     };
     matched.forEach(sid => {
       const sock = io.sockets.sockets.get(sid);
       if (sock) sock.join(roomCode);
     });
-    io.to(roomCode).emit('match_found', { roomCode, players: rooms[roomCode].players });
-    console.log(`[匹配] ${mode}人模式 匹配成功, 房间 ${roomCode}`);
+    // 告诉每个玩家他们的座位和谁先手
+    matched.forEach((sid, i) => {
+      const sock = io.sockets.sockets.get(sid);
+      if (sock) {
+        sock.emit('match_found', {
+          roomCode, seat: i, firstSeat,
+          players: rooms[roomCode].players,
+        });
+      }
+    });
+    console.log(`[匹配] ${mode}人 成功, 房间 ${roomCode}, 先手: P${firstSeat}`);
     return true;
   }
   return false;
@@ -170,24 +184,23 @@ io.on('connection', (socket) => {
     console.log(`[游戏] 房间 ${roomCode} 开始游戏`);
   });
 
-  // 出牌
-  socket.on('play_cards', (data, callback) => {
-    const { roomCode, cards, cardType } = data;
+  // 出牌 → 中继给房间其他人
+  socket.on('play_cards', (data) => {
+    const { roomCode, cards, cardType, playerSeat } = data;
+    socket.to(roomCode).emit('opponent_played', { seat: playerSeat, cards, cardType });
+    // 更新服务器游戏状态
     const room = rooms[roomCode];
-    if (!room) { callback({ success: false }); return; }
-    io.to(roomCode).emit('cards_played', {
-      playerId: socket.id,
-      cards,
-      cardType,
-    });
-    callback({ success: true });
+    if (room && room.gameState) {
+      room.gameState.lastPlay = { seat: playerSeat, cards, type: cardType };
+      room.gameState.lastPlayPlayerIndex = playerSeat;
+      room.gameState.currentPlayerIndex = (playerSeat + 1) % room.totalSlots;
+    }
   });
 
-  // 过牌
-  socket.on('pass_turn', (data, callback) => {
-    const { roomCode } = data;
-    io.to(roomCode).emit('player_passed', { playerId: socket.id });
-    callback({ success: true });
+  // 要不起 → 中继
+  socket.on('pass_turn', (data) => {
+    const { roomCode, playerSeat } = data;
+    socket.to(roomCode).emit('opponent_passed', { seat: playerSeat });
   });
 
   // 准备切换模式

@@ -1,0 +1,8 @@
+# Render.com 部署配置
+services:
+  - type: web
+    name: guandan-game
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    plan: free

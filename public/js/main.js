@@ -854,12 +854,12 @@
 
     let newRound = false;
     if (isLeader) {
-      const smallest = GameEngine.findSmallestPlay(hand, level);
+      const smallest = CE.findSmallestPlay(hand, level);
       if (smallest) {
         GameEngine.playCards(game, playerSeat, smallest.cards);
       }
     } else {
-      const beating = GameEngine.findBeatingPlays(hand, game.lastPlay.type, level);
+      const beating = CE.findBeatingPlays(hand, game.lastPlay.type, level);
       if (beating.length > 0) {
         beating.sort((a, b) => a.type.mainRankValue - b.type.mainRankValue);
         GameEngine.playCards(game, playerSeat, beating[0].cards);
@@ -887,7 +887,7 @@
 
     // 找到能打的牌
     if (game.lastPlay && game.lastPlayPlayerIndex !== playerSeat) {
-      const beating = GameEngine.findBeatingPlays(game.players[playerSeat].hand, game.lastPlay.type, game.level);
+      const beating = CE.findBeatingPlays(game.players[playerSeat].hand, game.lastPlay.type, game.level);
       if (beating.length > 0) {
         // 选最小的能压过的牌
         beating.sort((a, b) => a.type.mainRankValue - b.type.mainRankValue);
@@ -899,7 +899,7 @@
         showToast('💡 没有能压过的牌，建议要不起');
       }
     } else {
-      const allPlays = GameEngine.findAllPlays(game.players[playerSeat].hand, game.level);
+      const allPlays = CE.findAllPlays(game.players[playerSeat].hand, game.level);
       if (allPlays.length > 0) {
         const smallest = allPlays.sort((a, b) => a.type.mainRankValue - b.type.mainRankValue)[0];
         showToast(`💡 建议出：${smallest.type.type} (${smallest.cards.length}张)`);
@@ -933,7 +933,7 @@
         const pr = GameEngine.passTurn(game, aiIndex);
         newRound = pr.newRound;
       } else {
-        const smallest = GameEngine.findSmallestPlay(aiPlayer.hand, game.level);
+        const smallest = CE.findSmallestPlay(aiPlayer.hand, game.level);
         if (smallest) {
           GameEngine.playCards(game, aiIndex, smallest.cards);
         }

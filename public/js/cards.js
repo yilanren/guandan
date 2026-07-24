@@ -163,22 +163,21 @@ function identifyCardType(cards, level) {
   const rankCounts = countRanks(normalCards, level);
   const counts = Object.values(rankCounts).sort((a, b) => b - a);
 
-  // 炸弹判断
-  if (wildCount === 0) {
-    // 6张炸弹
-    if (n === 6 && counts.length === 1 && counts[0] === 6) {
-      const rk = Object.keys(rankCounts)[0];
-      return { type: 'bomb_6', weight: 115, mainRank: rk, mainRankValue: getEffectiveRankValue(rk, level) };
+  // 炸弹判断：检查所有牌是否同点数（红桃级牌当白搭但同点数是炸弹！）
+  // 计算所有牌的实际点数（红桃级牌也算其原本点数）
+  const allSameRank = cards.every(c => c.rank === cards[0].rank);
+  const effectiveBombCount = allSameRank ? n : (wildCount === 0 ? n : 0);
+
+  if (effectiveBombCount >= 4) {
+    const rk = cards[0].rank;
+    if (n === 4) {
+      return { type: 'bomb_4', weight: 100, mainRank: rk, mainRankValue: getEffectiveRankValue(rk, level) };
     }
-    // 5张炸弹
-    if (n === 5 && counts.length === 1 && counts[0] === 5) {
-      const rk = Object.keys(rankCounts)[0];
+    if (n === 5) {
       return { type: 'bomb_5', weight: 105, mainRank: rk, mainRankValue: getEffectiveRankValue(rk, level) };
     }
-    // 4张炸弹
-    if (n === 4 && counts.length === 1 && counts[0] === 4) {
-      const rk = Object.keys(rankCounts)[0];
-      return { type: 'bomb_4', weight: 100, mainRank: rk, mainRankValue: getEffectiveRankValue(rk, level) };
+    if (n === 6) {
+      return { type: 'bomb_6', weight: 115, mainRank: rk, mainRankValue: getEffectiveRankValue(rk, level) };
     }
   }
 

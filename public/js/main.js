@@ -701,7 +701,7 @@
     const typeNames = {
       single: '单张', pair: '对子', triple: '三同张',
       triple_pair: '三带二', triple_pair_5: '三带二',
-      straight: '顺子',
+      straight: '一句话',
       triple_straight: '木板', plane: '钢板',
       flush_straight: '同花顺', bomb_4: '💣4炸',
       bomb_5: '💣5炸', bomb_6: '💣6炸',
@@ -733,6 +733,18 @@
     } else {
       html = '<div style="text-align:center;color:rgba(255,255,255,0.3);font-size:0.85em;">新一轮，请出牌</div>';
     }
+
+    // 显示最近的"要不起"
+    if (game.history && game.history.length > 0) {
+      const lastEntry = game.history[game.history.length - 1];
+      if (lastEntry.pass && lastEntry.playerIndex !== game.lastPlayPlayerIndex) {
+        const passer = game.players[lastEntry.playerIndex];
+        html += `<div class="play-round" style="justify-content:center;margin-top:4px;">
+          <span style="color:#999;font-style:italic;">${passer.name}：要不起</span>
+        </div>`;
+      }
+    }
+
     container.innerHTML = html;
 
     // 当前轮到谁
@@ -1142,17 +1154,8 @@
 
   // === 下一局 ===
   function startNextGame() {
-    const currentLevel = game.level;
     const currentMode = game.mode;
-
-    // 计算升级
-    if (currentMode === 'four') {
-      const upgrade = GameEngine.calculateUpgrade(game);
-      const lvlResult = GameEngine.levelUp(game, upgrade);
-    } else {
-      const idx = GameEngine.LEVEL_SEQUENCE.indexOf(currentLevel);
-      game.level = GameEngine.LEVEL_SEQUENCE[Math.min(idx + 1, GameEngine.LEVEL_SEQUENCE.length - 1)];
-    }
+    const nextLevel = game.level; // showResults已更新过级牌，直接使用
 
     // 保存旧游戏结果（进贡需要）
     const oldResults = GameEngine.getResults(game);
@@ -1166,7 +1169,7 @@
       playerNames: oldPlayerConfig.map(p => p.name),
       aiSlots: oldPlayerConfig.map((p, i) => p.isAI ? i : -1).filter(i => i >= 0),
     });
-    game.level = currentLevel;
+    game.level = nextLevel;
 
     // 执行进贡（在新手牌上进行）
     if (tributes.length > 0 && !resisted) {

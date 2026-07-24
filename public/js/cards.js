@@ -286,6 +286,13 @@ function checkStraight(cards, level) {
     return { type: 'straight', weight: 3, mainRank: '5', mainRankValue: RANK_VALUE['5'] };
   }
 
+  // 特殊：23456 (2=0, 3=1, 4=2, 5=3, 6=4)
+  const b23456Set = new Set(cards.map(c => c.rank));
+  if (b23456Set.has('2') && b23456Set.has('3') && b23456Set.has('4') &&
+      b23456Set.has('5') && b23456Set.has('6')) {
+    return { type: 'straight', weight: 3, mainRank: '6', mainRankValue: RANK_VALUE['6'] };
+  }
+
   return null;
 }
 
@@ -559,6 +566,14 @@ function findAllPlays(hand, level) {
     });
     if (straightRanksFiltered.length === 5) {
       addPlay(a2345.map(r => groups[r][0]), { type: 'straight', weight: 3, mainRank: '5', mainRankValue: RANK_VALUE['5'] });
+    }
+  }
+  // 23456特殊处理
+  const b23456 = ['2','3','4','5','6'];
+  if (b23456.every(r => groups[r] && groups[r].length >= 1)) {
+    const filtered23456 = b23456.filter(r => r !== level);
+    if (filtered23456.length === 5) {
+      addPlay(b23456.map(r => groups[r][0]), { type: 'straight', weight: 3, mainRank: '6', mainRankValue: RANK_VALUE['6'] });
     }
   }
 

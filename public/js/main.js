@@ -577,6 +577,41 @@
       resetTimer();
       renderGame();
     });
+
+    // 下一局（多人模式服务端统一发牌）
+    socket.on('next_game_start', (data) => {
+      playerSeat = data.seat;
+      dealerSeat = data.dealerSeat;
+
+      // 用 GameEngine.createGame 创建标准游戏对象
+      const names = data.players.map(p => p.name);
+      game = GameEngine.createGame({
+        mode: currentMode,
+        playerNames: names,
+        aiSlots: [],
+      });
+
+      // 用服务端统一手牌替换
+      game.players.forEach((p, i) => {
+        p.id = data.players[i].id;
+        p.isAI = false;
+        if (i === playerSeat) {
+          p.hand = data.myHand;
+        } else {
+          const opp = data.opponents.find(o => o.seat === i);
+          const sz = opp ? opp.handSize : 27;
+          p.hand = new Array(sz).fill(null).map(() => ({ suit: '?', rank: '?', id: '?', uid: '?' }));
+        }
+      });
+
+      // 使用服务器指定的等级和庄家
+      game.level = data.level;
+      game.currentPlayerIndex = dealerSeat;
+      game.lastPlayPlayerIndex = dealerSeat;
+
+      startGameScreen();
+      instantDeal();
+    });
   }
 
   function bindDisconnectEvent() {
@@ -1268,16 +1303,29 @@
   // === 下一局 ===
   function startNextGame() {
     const currentMode = game.mode;
-    // 使用当前庄家的等级
     const nextLevel = playerLevels[dealerSeat];
 
-    // 保存旧游戏结果（进贡需要）
+    // 多人模式：请求服务器发新牌（统一牌堆，防止各客户端不同步）
+    if (isMultiplayer && socket && roomCode) {
+      socket.emit('request_next_game', {
+        roomCode,
+        level: nextLevel,
+        dealerSeat,
+      }, (res) => {
+        if (!res || !res.success) {
+          showToast('开始下一局失败，请返回菜单重试');
+        }
+        // 等待服务器 next_game_start 事件
+      });
+      return;
+    }
+
+    // 单人/AI模式：本地创建新游戏
     const oldResults = GameEngine.getResults(game);
     const tributes = GameEngine.calculateTribute(game);
     const resisted = (currentMode === 'four') ? GameEngine.checkTributeResist(game) : false;
     const oldPlayerConfig = game.players.map(p => ({ name: p.name, isAI: p.isAI }));
 
-    // 创建新游戏（重新发牌）
     game = GameEngine.createGame({
       mode: currentMode,
       playerNames: oldPlayerConfig.map(p => p.name),
@@ -1285,7 +1333,6 @@
     });
     game.level = nextLevel;
 
-    // 进贡逻辑
     if (tributes.length > 0 && !resisted) {
       const newTributes = GameEngine.calculateTribute(game);
       if (newTributes.length > 0) {
@@ -1296,7 +1343,6 @@
         dealerSeat = firstPlayer;
       }
     } else {
-      // 庄家先出
       game.currentPlayerIndex = dealerSeat;
       game.lastPlayPlayerIndex = dealerSeat;
     }

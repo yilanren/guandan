@@ -265,6 +265,50 @@ io.on('connection', (socket) => {
     socket.to(roomCode).emit('opponent_passed', { seat: playerSeat });
   });
 
+  // 请求下一局（多人模式）→ 服务端统一发新牌
+  socket.on('request_next_game', (data, callback) => {
+    const { roomCode, level, dealerSeat } = data;
+    const room = rooms[roomCode];
+    if (!room) { callback && callback({ success: false, error: '房间不存在' }); return; }
+
+    const totalSlots = room.totalSlots;
+    const decksNeeded = { two: 1, three: 2, four: 2 }[room.mode] || 1;
+    const cardsPerPlayer = 27;
+
+    let deck = [];
+    for (let i = 0; i < decksNeeded; i++) {
+      deck = deck.concat(CardEngine.createDeck(i));
+    }
+    deck = CardEngine.shuffle(deck);
+
+    const playerHands = [];
+    for (let i = 0; i < totalSlots; i++) {
+      playerHands.push(deck.slice(i * cardsPerPlayer, (i + 1) * cardsPerPlayer));
+    }
+
+    room.playerHands = playerHands;
+    room.gameState = { currentPlayerIndex: dealerSeat, lastPlay: null, lastPlayPlayerIndex: dealerSeat, phase: 'playing' };
+
+    // 发给每个玩家
+    room.players.forEach((p, i) => {
+      const sock = io.sockets.sockets.get(p.id);
+      if (sock) {
+        sock.emit('next_game_start', {
+          seat: i, dealerSeat, level,
+          myHand: playerHands[i],
+          opponents: room.players.filter((_, j) => j !== i).map((op, j) => ({
+            name: op.name, seat: op.seat, handSize: playerHands[op.seat].length,
+          })),
+          totalPlayers: totalSlots,
+          players: room.players,
+        });
+      }
+    });
+
+    if (callback) callback({ success: true });
+    console.log(`[下一局] 房间 ${roomCode}, 庄家: P${dealerSeat}, 级牌: ${level}`);
+  });
+
   // 准备切换模式
   socket.on('set_ready', (data) => {
     const { roomCode, ready } = data;

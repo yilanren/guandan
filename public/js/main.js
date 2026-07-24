@@ -28,6 +28,7 @@
   // === 跨局持久状态（等级追踪） ===
   let playerLevels = ['2', '2', '2', '2']; // 每个玩家的当前等级
   let dealerSeat = 0; // 当前坐庄的玩家
+  let playerAAttempts = [0, 0, 0, 0]; // 冲A已尝试次数（每人独立）
 
   // === 初始化 ===
   function init() {
@@ -198,6 +199,7 @@
   function startSinglePlayerGame() {
     isMultiplayer = false;
     playerLevels = ['2', '2', '2', '2']; // 重置等级
+    playerAAttempts = [0, 0, 0, 0]; // 重置冲A计数
     game = GameEngine.createGame({
       mode: 'single',
       playerNames: ['你', 'AI对手'],
@@ -273,6 +275,7 @@
     playerSeat = 0;
     // 重置等级
     playerLevels = ['2', '2', '2', '2'];
+    playerAAttempts = [0, 0, 0, 0];
     game.level = playerLevels[dealerSeat];
 
     startGameScreen();
@@ -517,6 +520,7 @@
         game.lastPlayPlayerIndex = firstSeat;
         dealerSeat = firstSeat;
         playerLevels = ['2', '2', '2', '2'];
+        playerAAttempts = [0, 0, 0, 0];
         game.level = playerLevels[dealerSeat];
 
         setTimeout(() => {
@@ -1125,29 +1129,65 @@
 
     // 升级计算：坐庄方赢→晋级，输→换庄
     let levelInfo = '';
+    const dealerLevel = playerLevels[dealerSeat];
+    const isAChallenge = dealerLevel === 'A'; // 是否在冲A
+
     if (dealerWon) {
-      // 庄家赢：晋级
-      if (game.mode === 'four') {
-        const upgrade = GameEngine.calculateUpgrade(game);
-        const currentIdx = GameEngine.LEVEL_SEQUENCE.indexOf(playerLevels[dealerSeat]);
-        const newIdx = Math.min(currentIdx + upgrade, GameEngine.LEVEL_SEQUENCE.length - 1);
-        playerLevels[dealerSeat] = GameEngine.LEVEL_SEQUENCE[newIdx];
-        playerLevels[(dealerSeat + 2) % 4] = playerLevels[dealerSeat];
-        levelInfo = '⬆ 升 ' + upgrade + ' 级 → 庄家级牌: ' + playerLevels[dealerSeat];
-        if (playerLevels[dealerSeat] === 'A') levelInfo += ' 🏆 恭喜过A！';
+      if (isAChallenge) {
+        // 🏆 冲A成功！彻底胜利！
+        levelInfo = '🏆🏆🏆 恭喜通关！冲A成功！🏆🏆🏆';
+        playerAAttempts[dealerSeat] = 0;
+        // 显示盛大胜利画面
+        setTimeout(() => showGrandVictory(), 500);
       } else {
-        const currentIdx = GameEngine.LEVEL_SEQUENCE.indexOf(playerLevels[dealerSeat]);
-        playerLevels[dealerSeat] = GameEngine.LEVEL_SEQUENCE[
-          Math.min(currentIdx + 1, GameEngine.LEVEL_SEQUENCE.length - 1)
-        ];
-        levelInfo = '⬆ 庄家升至 ' + playerLevels[dealerSeat];
+        // 正常晋级
+        if (game.mode === 'four') {
+          const upgrade = GameEngine.calculateUpgrade(game);
+          const currentIdx = GameEngine.LEVEL_SEQUENCE.indexOf(dealerLevel);
+          const newIdx = Math.min(currentIdx + upgrade, GameEngine.LEVEL_SEQUENCE.length - 1);
+          playerLevels[dealerSeat] = GameEngine.LEVEL_SEQUENCE[newIdx];
+          playerLevels[(dealerSeat + 2) % 4] = playerLevels[dealerSeat];
+          levelInfo = '⬆ 升 ' + upgrade + ' 级 → 庄家级牌: ' + playerLevels[dealerSeat];
+        } else {
+          const currentIdx = GameEngine.LEVEL_SEQUENCE.indexOf(dealerLevel);
+          playerLevels[dealerSeat] = GameEngine.LEVEL_SEQUENCE[
+            Math.min(currentIdx + 1, GameEngine.LEVEL_SEQUENCE.length - 1)
+          ];
+          levelInfo = '⬆ 庄家升至 ' + playerLevels[dealerSeat];
+        }
+        // 到达A时提示
+        if (playerLevels[dealerSeat] === 'A') {
+          levelInfo += ' | 🔥 进入冲A阶段！2次机会！';
+          playerAAttempts[dealerSeat] = 0;
+        }
       }
       // 庄家不变，继续坐庄
     } else {
-      // 庄家输：头游成为新庄家
-      const newDealer = head;
-      dealerSeat = newDealer;
-      levelInfo = '🔄 换庄！新庄家: ' + game.players[newDealer].name + '（级牌: ' + playerLevels[newDealer] + '）';
+      // 庄家输
+      if (isAChallenge) {
+        // 冲A失败一次
+        playerAAttempts[dealerSeat]++;
+        const remaining = 2 - playerAAttempts[dealerSeat];
+        if (remaining <= 0) {
+          // 两次都失败：从头再来
+          playerLevels[dealerSeat] = '2';
+          playerAAttempts[dealerSeat] = 0;
+          if (game.mode === 'four') {
+            playerLevels[(dealerSeat + 2) % 4] = '2';
+          }
+          levelInfo = '💔 冲A失败2次！庄家降回2级从头开始';
+        } else {
+          levelInfo = '⚠️ 冲A失败！还剩 ' + remaining + ' 次机会';
+        }
+        // 换庄
+        const newDealer = head;
+        dealerSeat = newDealer;
+      } else {
+        // 正常换庄
+        const newDealer = head;
+        dealerSeat = newDealer;
+        levelInfo = '🔄 换庄！新庄家: ' + game.players[newDealer].name + '（级牌: ' + playerLevels[newDealer] + '）';
+      }
     }
 
     game.level = playerLevels[dealerSeat];
@@ -1196,6 +1236,33 @@
     `;
     document.body.appendChild(overlay);
     setTimeout(() => overlay.remove(), 2000);
+  }
+
+  // === 盛大胜利画面（过A通关） ===
+  function showGrandVictory() {
+    // 隐藏结果画面
+    switchScreen('result');
+    const overlay = document.createElement('div');
+    overlay.className = 'grand-victory-overlay';
+    overlay.innerHTML = `
+      <div class="grand-victory-fireworks">🎆🎇🎆🎇🎆</div>
+      <div class="grand-victory-trophy">🏆</div>
+      <div class="grand-victory-title">恭喜通关！</div>
+      <div class="grand-victory-subtitle">掼 蛋 之 王</div>
+      <div class="grand-victory-stars">⭐⭐⭐⭐⭐</div>
+      <div style="color:var(--gold-light);margin-top:12px;font-size:1.1em;">你已成功通过级牌A的考验！</div>
+      <button class="menu-btn" id="btn-grand-victory-ok" style="margin-top:24px;max-width:200px;">🏠 返回菜单</button>
+    `;
+    document.body.appendChild(overlay);
+    $('#btn-grand-victory-ok').addEventListener('click', () => {
+      overlay.remove();
+      switchScreen('menu');
+      // 重置所有等级
+      playerLevels = ['2', '2', '2', '2'];
+      playerAAttempts = [0, 0, 0, 0];
+      dealerSeat = 0;
+      game = null;
+    });
   }
 
   // === 下一局 ===

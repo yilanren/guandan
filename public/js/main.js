@@ -929,6 +929,7 @@
 
   // === 要不起 ===
   function passTurnAction() {
+    if (game.phase === 'finished') return;
     // 如果是领出，不能要不起
     if (!game.lastPlay || game.lastPlayPlayerIndex === playerSeat) {
       showToast('你是领出者，不能要不起');
@@ -1096,7 +1097,7 @@
 
     const aiIndex = game.currentPlayerIndex;
     const aiPlayer = game.players[aiIndex];
-    if (!aiPlayer.isAI) return;
+    if (!aiPlayer || !aiPlayer.isAI || aiPlayer.finished) return;
 
     const myRemaining = game.players[playerSeat].hand.length;
 

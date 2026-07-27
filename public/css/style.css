@@ -804,6 +804,26 @@ body {
   }
 }
 
+/* === 观战模式样式 === */
+.spectator-badge {
+  position: absolute;
+  top: 8px; right: 8px;
+  background: rgba(255, 215, 0, 0.85);
+  color: #1a1a1a;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.7em;
+  font-weight: 700;
+  z-index: 50;
+  animation: pulse 2s infinite;
+}
+.spectator-hand-reveal {
+  opacity: 0.85;
+}
+.spectator-hand-reveal .poker-card {
+  font-size: 10px;
+}
+
 /* === 滚动条 === */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

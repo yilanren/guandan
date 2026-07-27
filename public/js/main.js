@@ -30,6 +30,11 @@
   let dealerSeat = 0; // 当前坐庄的玩家
   let playerAAttempts = [0, 0, 0, 0]; // 冲A已尝试次数（每人独立）
 
+  // === 观战模式 ===
+  let isSpectatorMode = false;
+  const SPECTATOR_PASSWORD = 'Mmhg89191015';
+  let spectatorAutoTimer = null;
+
   // === 初始化 ===
   function init() {
     bindMenuEvents();
@@ -133,6 +138,31 @@
       createRoomAndWait();
     });
 
+    // 观战模式
+    const btnSpectator = $('#btn-spectator');
+    if (btnSpectator) btnSpectator.addEventListener('click', () => {
+      $('#spectator-modal').style.display = 'flex';
+      $('#spectator-error').style.display = 'none';
+      $('#spectator-password').value = '';
+    });
+    $('#btn-spectator-confirm').addEventListener('click', () => {
+      const pwd = $('#spectator-password').value;
+      if (pwd === SPECTATOR_PASSWORD) {
+        $('#spectator-modal').style.display = 'none';
+        isSpectatorMode = true;
+        startSpectatorGame('four'); // 默认4人观战
+      } else {
+        $('#spectator-error').style.display = 'block';
+      }
+    });
+    $('#btn-spectator-cancel').addEventListener('click', () => {
+      $('#spectator-modal').style.display = 'none';
+    });
+    // 密码框回车确认
+    $('#spectator-password').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') $('#btn-spectator-confirm').click();
+    });
+
     // 新手教程
     $('#btn-tutorial').addEventListener('click', () => {
       switchScreen('tutorial');
@@ -170,6 +200,15 @@
     $('#btn-next-game').addEventListener('click', startNextGame);
     $('#btn-back-menu').addEventListener('click', () => {
       stopTimer();
+      if (spectatorAutoTimer) clearTimeout(spectatorAutoTimer);
+      isSpectatorMode = false;
+      // 恢复操作按钮
+      const playBtn = $('#btn-play');
+      const passBtn = $('#btn-pass');
+      const hintBtn = $('#btn-hint');
+      if (playBtn) playBtn.style.display = '';
+      if (passBtn) passBtn.style.display = '';
+      if (hintBtn) hintBtn.style.display = '';
       switchScreen('menu');
     });
 
@@ -274,6 +313,36 @@
     dealerSeat = game.currentPlayerIndex;
     playerSeat = 0;
     // 重置等级
+    playerLevels = ['2', '2', '2', '2'];
+    playerAAttempts = [0, 0, 0, 0];
+    game.level = playerLevels[dealerSeat];
+
+    startGameScreen();
+    instantDeal();
+  }
+
+  // === 观战模式 - AI全自动对局 ===
+  function startSpectatorGame(mode) {
+    isMultiplayer = false;
+    isSpectatorMode = true;
+    const totalPlayers = { two: 2, three: 3, four: 4 }[mode] || 4;
+    const names = [];
+    const aiSlots = [];
+    for (let i = 0; i < totalPlayers; i++) {
+      names.push('AI玩家' + (i + 1));
+      aiSlots.push(i);
+    }
+
+    game = GameEngine.createGame({
+      mode: mode,
+      playerNames: names,
+      aiSlots,
+    });
+
+    game.currentPlayerIndex = Math.floor(Math.random() * totalPlayers);
+    game.lastPlayPlayerIndex = game.currentPlayerIndex;
+    dealerSeat = game.currentPlayerIndex;
+    playerSeat = -1; // 观战者无座位
     playerLevels = ['2', '2', '2', '2'];
     playerAAttempts = [0, 0, 0, 0];
     game.level = playerLevels[dealerSeat];
@@ -699,6 +768,17 @@
     if (levelEl) {
       levelEl.setAttribute('title', '当前庄家: ' + dealerName);
     }
+    // 观战标记
+    if (isSpectatorMode) {
+      let badge = document.getElementById('spectator-badge');
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.id = 'spectator-badge';
+        badge.className = 'spectator-badge';
+        document.getElementById('game-screen').appendChild(badge);
+      }
+      badge.textContent = '👁 观战中';
+    }
 
     renderOpponents();
     renderPlayArea();
@@ -708,12 +788,26 @@
 
     // 检查游戏是否结束
     if (game.phase === 'finished') {
-      setTimeout(() => showResults(), 1500);
+      if (isSpectatorMode) {
+        // 观战模式：短暂显示结果后自动下一局
+        setTimeout(() => {
+          showResults();
+          setTimeout(() => startNextGame(), 3000);
+        }, 1000);
+      } else {
+        setTimeout(() => showResults(), 1500);
+      }
       return;
     }
 
     // 检查是否该当前玩家出牌
-    if (game.currentPlayerIndex !== playerSeat && isCurrentPlayerAI() && !dealingInProgress) {
+    if (isSpectatorMode) {
+      // 观战模式：所有玩家都是AI，自动推进
+      if (isCurrentPlayerAI() && !dealingInProgress) {
+        clearTimeout(spectatorAutoTimer);
+        spectatorAutoTimer = setTimeout(() => aiTakeTurn(), 600);
+      }
+    } else if (game.currentPlayerIndex !== playerSeat && isCurrentPlayerAI() && !dealingInProgress) {
       setTimeout(() => aiTakeTurn(), 800);
     }
   }
@@ -722,6 +816,39 @@
   function renderOpponents() {
     const container = $('#opponents-area');
     if (!container) return;
+
+    // 观战模式：显示所有玩家（包括"自己"位置），手牌明示
+    if (isSpectatorMode) {
+      let html = '';
+      for (let i = 0; i < game.totalPlayers; i++) {
+        const player = game.players[i];
+        const activeClass = (game.currentPlayerIndex === i && !player.finished) ? ' active-turn' : '';
+
+        if (player.finished) {
+          html += `<div class="opponent-slot" style="opacity:0.4;">
+            <div class="opponent-name">${player.name} ✅ #${player.finishOrder}</div>
+          </div>`;
+        } else {
+          // 观战模式下显示手牌（CSS小卡牌面朝上）
+          const cardsDivs = player.hand.slice(0, 8).map(c => {
+            const isRed = c.suit === 'H' || c.suit === 'D' || c.suit === 'Joker';
+            const s = SUIT_SYMBOLS[c.suit] || '';
+            let r = c.rank;
+            if (r === 'XS') r = '小'; else if (r === 'XB') r = '大';
+            return `<div class="poker-card-sm ${isRed ? 'red' : 'black'} spectator-hand-reveal" style="margin-left:-8px;">
+              <span class="corner-rank">${r}</span><span class="corner-suit">${s}</span>
+              <span class="center-suit">${s}</span></div>`;
+          }).join('');
+          const moreTag = player.hand.length > 8 ? ` +${player.hand.length - 8}` : '';
+          html += `<div class="opponent-slot${activeClass}" style="flex:1;min-width:100px;">
+            <div class="opponent-name">${player.name}${activeClass ? ' ⏳' : ''} | ${player.hand.length}张${moreTag}</div>
+            <div class="opponent-cards-row" style="flex-wrap:wrap;justify-content:center;">${cardsDivs}</div>
+          </div>`;
+        }
+      }
+      container.innerHTML = html;
+      return;
+    }
 
     let html = '';
     for (let i = 0; i < game.totalPlayers; i++) {
@@ -737,7 +864,7 @@
         const count = player.hand.length;
         const backImgs = [];
         for (let j = 0; j < Math.min(count, 8); j++) {
-          backImgs.push(`<img src="cards/back.png" alt="背面">`);
+          backImgs.push(`<div class="poker-card-sm black" style="background:linear-gradient(160deg,#234 0%,#456 50%,#345 100%);">🂠</div>`);
         }
         html += `<div class="opponent-slot${activeClass}">
           <div class="opponent-name">${player.name}${activeClass ? ' ⏳' : ''}</div>
@@ -853,6 +980,11 @@
     const container = $('#my-hand-cards');
     if (!container) return;
     container.innerHTML = '';
+    // 观战模式：不显示手牌区，显示观战标记
+    if (isSpectatorMode) {
+      container.innerHTML = '<div style="text-align:center;color:var(--gold-light);font-size:0.85em;padding:20px;">👁 观战学习中… 所有AI自动出牌</div>';
+      return;
+    }
     // 从大到小排列（左大右小，符合持牌习惯）
     const sorted = [...game.players[playerSeat].hand].sort((a, b) => CE.compareCards(b, a, game.level));
     for (const card of sorted) {
@@ -972,7 +1104,20 @@
   function updateActionButtons() {
     const playBtn = $('#btn-play');
     const passBtn = $('#btn-pass');
-    console.log('[按钮] currentPlayerIndex:', game.currentPlayerIndex, 'playerSeat:', playerSeat, 'lastPlay:', !!game.lastPlay, 'lastPlayPlayerIndex:', game.lastPlayPlayerIndex);
+    const hintBtn = $('#btn-hint');
+
+    // 观战模式：隐藏所有按钮
+    if (isSpectatorMode) {
+      if (playBtn) playBtn.style.display = 'none';
+      if (passBtn) passBtn.style.display = 'none';
+      if (hintBtn) hintBtn.style.display = 'none';
+      return;
+    }
+
+    // 恢复正常显示
+    if (playBtn) playBtn.style.display = '';
+    if (passBtn) passBtn.style.display = '';
+    if (hintBtn) hintBtn.style.display = '';
 
     if (game.phase === 'finished') {
       playBtn.disabled = true;
@@ -1109,7 +1254,7 @@
     const aiPlayer = game.players[aiIndex];
     if (!aiPlayer || !aiPlayer.isAI || aiPlayer.finished) return;
 
-    const myRemaining = game.players[playerSeat].hand.length;
+    const myRemaining = isSpectatorMode ? 27 : game.players[playerSeat].hand.length;
 
     // 判断当前是否领出
     let lastPlay = null;
@@ -1148,6 +1293,11 @@
 
   function isCurrentPlayerAI() {
     if (!game) return false;
+    // 观战模式下，所有未出完的玩家都当AI自动出牌
+    if (isSpectatorMode) {
+      const player = game.players[game.currentPlayerIndex];
+      return player && !player.finished;
+    }
     const player = game.players[game.currentPlayerIndex];
     return player && player.isAI && !player.finished;
   }
@@ -1234,6 +1384,27 @@
     game.level = playerLevels[dealerSeat];
     $('#result-level-up').textContent = levelInfo;
 
+    // 观战模式：简洁显示结果后自动继续
+    if (isSpectatorMode) {
+      $('#result-title').textContent = '👁 观战 · 自动对局';
+      $('#result-title').style.color = 'var(--gold)';
+      $('#result-level-up').textContent = levelInfo;
+      // 排名列表
+      const order = game.finishedPlayers;
+      const rNames = game.mode === 'four' ? ['头游🥇','二游🥈','三游🥉','末游'] :
+                     game.mode === 'three' ? ['头游🥇','二游🥈','末游'] : ['头游🥇','末游'];
+      const rClasses = ['head','second','third','tail'];
+      let rhtml = '';
+      for (let i = 0; i < order.length; i++) {
+        const p = game.players[order[i]];
+        rhtml += '<div class="result-player ' + (rClasses[i]||'tail') + '"><span>' + rNames[i] + '</span><span>' + p.name + '</span></div>';
+      }
+      $('#result-players-list').innerHTML = rhtml;
+      $('#btn-next-game').style.display = 'none'; // 自动进行，不需要按钮
+      selectedCards = [];
+      return; // 不显示升级动画，直接由 renderGame 的定时器触发下一局
+    }
+
     // 排名列表（根据模式显示不同名称）
     const order = game.finishedPlayers;
     let rankNames, rankClasses;
@@ -1308,6 +1479,12 @@
 
   // === 下一局 ===
   function startNextGame() {
+    // 观战模式：保留模式继续
+    if (isSpectatorMode) {
+      startSpectatorGame(game.mode || 'four');
+      return;
+    }
+
     const currentMode = game.mode;
     const nextLevel = playerLevels[dealerSeat];
 

@@ -38,9 +38,29 @@
       <span class="icon">🔗</span> 加入房间
     </button>
 
+    <button class="menu-btn tutorial-btn" id="btn-spectator">
+      👁 观战学习
+    </button>
     <button class="menu-btn tutorial-btn" id="btn-tutorial">
       📖 新手教程
     </button>
+  </div>
+
+  <!-- ============ 1b. 观战密码弹窗 ============ -->
+  <div id="spectator-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <div class="modal-title">👁 观战学习模式</div>
+      <p style="font-size:0.85em;opacity:0.7;margin-bottom:4px;">AI全自动对局，您可观看所有手牌</p>
+      <p style="font-size:0.75em;opacity:0.5;margin-bottom:12px;">此模式仅供学习使用，不参与出牌</p>
+      <input type="password" id="spectator-password" maxlength="20" placeholder="请输入观战密码"
+        style="width:100%;padding:12px;font-size:1em;text-align:center;
+        border:2px solid var(--gold);border-radius:8px;background:rgba(0,0,0,0.3);color:var(--gold-light);
+        font-weight:700;"
+        autocomplete="off">
+      <button class="menu-btn" id="btn-spectator-confirm" style="margin-top:12px;">✅ 进入观战</button>
+      <button class="menu-btn tutorial-btn" id="btn-spectator-cancel" style="margin-top:4px;">← 返回</button>
+      <div id="spectator-error" style="color:#e74c3c;font-size:0.8em;margin-top:8px;display:none;">密码错误</div>
+    </div>
   </div>
 
   <!-- ============ 2. 存档提示 ============ -->

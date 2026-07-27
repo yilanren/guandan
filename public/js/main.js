@@ -692,8 +692,13 @@
   function renderGame() {
     if (!game) return;
 
-    // 更新级牌显示
+    // 更新级牌显示和庄家
     $('#game-level').textContent = game.level;
+    const dealerName = game.players[dealerSeat] ? game.players[dealerSeat].name : '';
+    const levelEl = $('#game-level').parentElement;
+    if (levelEl) {
+      levelEl.setAttribute('title', '当前庄家: ' + dealerName);
+    }
 
     renderOpponents();
     renderPlayArea();
@@ -896,6 +901,11 @@
     if (!result.valid) {
       showToast(result.error || '出牌不合法');
       return;
+    }
+
+    // 炸弹音效提示（视觉）
+    if (result.cardType && result.cardType.weight >= 100) {
+      showToast('💣 炸弹！');
     }
 
     // 保存已出的牌（在清空selectedCards之前）
@@ -1165,15 +1175,11 @@
 
     // 升级计算：坐庄方赢→晋级，输→换庄
     let levelInfo = '';
-    const dealerLevel = playerLevels[dealerSeat];
-    const isAChallenge = dealerLevel === 'A'; // 是否在冲A
-
     if (dealerWon) {
-      if (isAChallenge) {
+      if (dealerLevel === 'A') {
         // 🏆 冲A成功！彻底胜利！
         levelInfo = '🏆🏆🏆 恭喜通关！冲A成功！🏆🏆🏆';
         playerAAttempts[dealerSeat] = 0;
-        // 显示盛大胜利画面
         setTimeout(() => showGrandVictory(), 500);
       } else {
         // 正常晋级
@@ -1191,7 +1197,6 @@
           ];
           levelInfo = '⬆ 庄家升至 ' + playerLevels[dealerSeat];
         }
-        // 到达A时提示
         if (playerLevels[dealerSeat] === 'A') {
           levelInfo += ' | 🔥 进入冲A阶段！2次机会！';
           playerAAttempts[dealerSeat] = 0;
@@ -1200,7 +1205,7 @@
       // 庄家不变，继续坐庄
     } else {
       // 庄家输
-      if (isAChallenge) {
+      if (dealerLevel === 'A') {
         // 冲A失败一次
         playerAAttempts[dealerSeat]++;
         const remaining = 2 - playerAAttempts[dealerSeat];

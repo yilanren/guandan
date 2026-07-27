@@ -531,9 +531,10 @@ function findAllPlays(hand, level) {
     if (g.length >= 6) addPlay(g.slice(0, 6), { type: 'bomb_6', weight: 115, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level) });
   }
 
-  // 5. 三带二（5张）
+  // 5. 三带二（5张）—— 含万能牌组合
   for (const rank of ranks) {
     const g = groups[rank];
+    // 无万能牌：3+2
     if (g.length >= 3) {
       for (const r2 of ranks) {
         if (r2 === rank) continue;
@@ -541,6 +542,41 @@ function findAllPlays(hand, level) {
         if (g2.length >= 2) {
           addPlay([g[0], g[1], g[2], g2[0], g2[1]], { type: 'triple_pair', weight: 4, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level), subtype: 'triple_pair_5' });
         }
+      }
+    }
+    // 有万能牌：万能牌补足三同张或对子
+    if (wildCount > 0 && g.length >= 2) {
+      // 万能牌把2张补成3张，另外需要一对（另一rank≥2 或 再一张万能牌）
+      const needTriple = 1; // 需要1张万能牌补三同张
+      const remainWilds = wildCount - needTriple;
+      for (const r2 of ranks) {
+        if (r2 === rank) continue;
+        const g2 = groups[r2];
+        if (g2.length >= 2) {
+          // 另一rank有对子：用2+wild做三同张 + 对子
+          addPlay([g[0], g[1], wildCards[0], g2[0], g2[1]], { type: 'triple_pair', weight: 4, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level), subtype: 'triple_pair_5' });
+        } else if (g2.length >= 1 && remainWilds >= 1) {
+          // 另一rank有1张+1wild=对子：用2+wild做三同张 + 1+wild做对子
+          addPlay([g[0], g[1], wildCards[0], g2[0], wildCards[1]], { type: 'triple_pair', weight: 4, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level), subtype: 'triple_pair_5' });
+        }
+      }
+      // 万能牌自己配成对子（需≥2张万能牌）
+      if (remainWilds >= 1 && wildCount >= 2 && g.length >= 2) {
+        addPlay([g[0], g[1], wildCards[0], wildCards[1], wildCards.length > 2 ? wildCards[2] : g[0]], { type: 'triple_pair', weight: 4, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level), subtype: 'triple_pair_5' });
+      }
+    }
+    // 万能牌补足对子：3张现成 + 1张+1wild=对子
+    if (wildCount >= 1 && g.length >= 3) {
+      for (const r2 of ranks) {
+        if (r2 === rank) continue;
+        const g2 = groups[r2];
+        if (g2.length >= 1) {
+          addPlay([g[0], g[1], g[2], g2[0], wildCards[0]], { type: 'triple_pair', weight: 4, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level), subtype: 'triple_pair_5' });
+        }
+      }
+      // 两张万能牌自己配成对子
+      if (wildCount >= 2) {
+        addPlay([g[0], g[1], g[2], wildCards[0], wildCards[1]], { type: 'triple_pair', weight: 4, mainRank: rank, mainRankValue: getEffectiveRankValue(rank, level), subtype: 'triple_pair_5' });
       }
     }
   }

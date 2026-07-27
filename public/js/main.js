@@ -1324,6 +1324,7 @@
     $('#result-title').style.color = iAmHead ? 'var(--gold)' : '#ccc';
 
     // 升级计算：坐庄方赢→晋级，输→换庄
+    const dealerLevel = playerLevels[dealerSeat];
     let levelInfo = '';
     if (dealerWon) {
       if (dealerLevel === 'A') {

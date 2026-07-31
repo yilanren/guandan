@@ -1262,7 +1262,9 @@
       lastPlay = game.lastPlay;
     }
 
-    const decision = AI.decidePlay(aiPlayer.hand, lastPlay, game.level, myRemaining);
+    // 四人模式：判断这个AI是不是玩家队友（不压队友牌）
+    const isTeammate = game.mode === 'four' && (aiIndex === (playerSeat + 2) % 4);
+    const decision = AI.decidePlay(aiPlayer.hand, lastPlay, game.level, myRemaining, isTeammate);
 
     let newRound = false;
     if (decision) {

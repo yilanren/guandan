@@ -211,10 +211,56 @@ const AI = (function() {
     return null;
   }
 
-  return {
-    decidePlay,
-    evaluateHand,
-  };
+  /**
+   * 简单AI - 领出（队友用）
+   */
+  function easyDecideLead(hand, level, opponentCount) {
+    const allPlays = CE.findAllPlays(hand, level);
+    if (allPlays.length === 0) return null;
+    // 去掉炸弹
+    const nonBombs = allPlays.filter(p => p.type.weight < 100);
+    if (nonBombs.length === 0) {
+      const singles = allPlays.filter(p => p.type.type === 'single');
+      if (singles.length > 0) return singles[Math.floor(Math.random() * singles.length)];
+      return allPlays[Math.floor(Math.random() * allPlays.length)];
+    }
+    // 随机选一个非炸弹
+    return nonBombs[Math.floor(Math.random() * nonBombs.length)];
+  }
+
+  /**
+   * 简单AI - 跟牌（队友用）
+   */
+  function easyDecideFollow(hand, lastPlay, level, opponentCount) {
+    const beatingPlays = CE.findBeatingPlays(hand, lastPlay.type, level);
+    if (beatingPlays.length === 0) return null;
+    // 只用普通牌压，绝不用炸弹
+    const normalBeats = beatingPlays.filter(p => p.type.weight < 100);
+    if (normalBeats.length === 0) return null;
+    // 30%概率压牌（大部分时候过）
+    if (Math.random() < 0.3) {
+      normalBeats.sort((a, b) => a.type.mainRankValue - b.type.mainRankValue);
+      return normalBeats[0];
+    }
+    return null;
+  }
+
+  /**
+   * 简单AI决策入口（队友用）
+   */
+  function easyDecidePlay(hand, lastPlay, level, opponentCount, isTeammate) {
+    if (!lastPlay || lastPlay.type === 'pass') {
+      return easyDecideLead(hand, level, opponentCount);
+    }
+    return easyDecideFollow(hand, lastPlay, level, opponentCount);
+  }
+
+  // 极难AI（对手用）
+  const hard = { decidePlay, evaluateHand };
+  // 简易AI（队友用）
+  const easy = { decidePlay: easyDecidePlay, evaluateHand };
+
+  return { hard, easy, decidePlay, evaluateHand };
 })();
 
 if (typeof window !== 'undefined') {
